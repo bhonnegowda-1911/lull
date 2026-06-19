@@ -35,7 +35,26 @@ Grade strictly and consistently against the STAR rubric. For each beat, decide w
 was present and score it 1-5. Provide concrete, specific coaching notes tied to what the
 candidate actually said — quote or paraphrase their words. You may reference the filler
 data in your coaching, but do not recompute it. Be honest and specific rather than
-encouraging for its own sake.`,
+encouraging for its own sake.
+
+In addition to STAR, infer the SENIORITY LEVEL this specific answer signals, on the
+engineering ladder: junior, mid, senior, staff, principal. Judge by the scope and impact
+of the work, the ambiguity navigated, the degree of autonomy and ownership, the breadth of
+influence (self → team → org), and the depth of judgment shown — NOT by job titles the
+candidate mentions. This is the level the STORY demonstrates, not a verdict on the person.
+Give a one or two sentence rationale and list the concrete signals (or missing signals)
+that drove the call. When the answer is too thin to tell, choose the lowest level the
+evidence supports and say what's missing to read higher.
+
+Pay special attention to two delivery habits and grade them explicitly and honestly:
+1. LEADS WITH THE OUTCOME — did the candidate state the result/headline up front (in the
+   first sentence or two), or did they bury it and make the listener wait? Reward a clear
+   "bottom line up front"; penalize a slow build-up to the payoff.
+2. DETAIL ALTITUDE — did they stay at the altitude of decisions and impact, or over-index
+   on background, setup, and technical minutiae? Classify the tendency as too_much (rambling
+   / too in-the-weeds), balanced, or too_little (too vague, no substance). Most candidates
+   err toward too_much.
+Be specific and direct about these two — they are common, fixable habits.`,
   schema: {
     type: 'object',
     properties: {
@@ -68,6 +87,60 @@ encouraging for its own sake.`,
         type: 'string',
         description: 'Two or three sentences summarizing the delivery overall.',
       },
+      deliveryHabits: {
+        type: 'object',
+        description: 'Two high-leverage delivery habits, graded explicitly.',
+        properties: {
+          leadsWithOutcome: {
+            type: 'object',
+            properties: {
+              present: { type: 'boolean', description: 'Did they state the outcome up front?' },
+              score: { type: 'integer', enum: SCORE_ENUM, description: '1 (buried) to 5 (clear BLUF).' },
+              note: { type: 'string', description: 'Specific observation; quote their opening if useful.' },
+            },
+            required: ['present', 'score', 'note'],
+            additionalProperties: false,
+          },
+          detailAltitude: {
+            type: 'object',
+            properties: {
+              tendency: {
+                type: 'string',
+                enum: ['too_much', 'balanced', 'too_little'],
+                description: 'Did they over-index on detail, stay balanced, or stay too vague?',
+              },
+              score: { type: 'integer', enum: SCORE_ENUM, description: '1 (poor altitude) to 5 (right altitude).' },
+              note: { type: 'string', description: 'Where they over- or under-detailed.' },
+            },
+            required: ['tendency', 'score', 'note'],
+            additionalProperties: false,
+          },
+        },
+        required: ['leadsWithOutcome', 'detailAltitude'],
+        additionalProperties: false,
+      },
+      levelSignal: {
+        type: 'object',
+        description: 'Seniority level this answer demonstrates (not a verdict on the person).',
+        properties: {
+          level: {
+            type: 'string',
+            enum: ['junior', 'mid', 'senior', 'staff', 'principal'],
+            description: 'The level the scope/impact/ownership/influence in the story signals.',
+          },
+          rationale: {
+            type: 'string',
+            description: 'One or two sentences explaining the level call.',
+          },
+          signals: {
+            type: 'array',
+            description: 'Concrete signals (or missing signals) that drove the call.',
+            items: { type: 'string' },
+          },
+        },
+        required: ['level', 'rationale', 'signals'],
+        additionalProperties: false,
+      },
       coachingNotes: {
         type: 'array',
         description: 'Ranked, specific improvements. Most important first.',
@@ -83,7 +156,7 @@ encouraging for its own sake.`,
         },
       },
     },
-    required: ['conforms', 'perBeat', 'scores', 'summary', 'coachingNotes'],
+    required: ['conforms', 'perBeat', 'scores', 'summary', 'deliveryHabits', 'levelSignal', 'coachingNotes'],
     additionalProperties: false,
   },
 }

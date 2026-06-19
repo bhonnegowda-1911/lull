@@ -33,6 +33,8 @@ export function buildFeedback({ llm, filler } = {}) {
     conforms: Boolean(star.conforms),
     summary: star.summary || '',
     scores: star.scores || {},
+    level: star.levelSignal || null,
+    habits: star.deliveryHabits || null,
     beats,
     filler: {
       total: fillerRaw.total ?? 0,

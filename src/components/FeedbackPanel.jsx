@@ -44,12 +44,115 @@ function BeatRow({ beat }) {
   )
 }
 
+const LEVEL_ORDER = ['junior', 'mid', 'senior', 'staff', 'principal']
+const LEVEL_LABEL = {
+  junior: 'Junior',
+  mid: 'Mid',
+  senior: 'Senior',
+  staff: 'Staff',
+  principal: 'Principal',
+}
+
+function LevelSignal({ level }) {
+  if (!level?.level) return null
+  const idx = LEVEL_ORDER.indexOf(level.level)
+  return (
+    <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-5 shadow-sm">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-indigo-900">Level signal</h3>
+        <span className="rounded-full bg-indigo-600 px-3 py-0.5 text-sm font-semibold text-white">
+          {LEVEL_LABEL[level.level] || level.level}
+        </span>
+      </div>
+
+      {/* Ladder: highlight the signalled level so it reads at a glance. */}
+      <div className="mt-3 flex gap-1">
+        {LEVEL_ORDER.map((l, i) => (
+          <div key={l} className="flex-1 text-center">
+            <div className={`h-1.5 rounded-full ${i <= idx ? 'bg-indigo-500' : 'bg-indigo-200'}`} />
+            <div className={`mt-1 text-[10px] ${i === idx ? 'font-semibold text-indigo-800' : 'text-indigo-400'}`}>
+              {LEVEL_LABEL[l]}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {level.rationale && <p className="mt-3 text-sm text-indigo-900/90">{level.rationale}</p>}
+      {Array.isArray(level.signals) && level.signals.length > 0 && (
+        <ul className="mt-2 list-disc space-y-0.5 pl-5 text-sm text-indigo-900/80">
+          {level.signals.map((s, i) => (
+            <li key={i}>{s}</li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-3 text-xs text-indigo-500">
+        The level this answer demonstrates — scope, ownership, and influence — not a verdict on you.
+      </p>
+    </div>
+  )
+}
+
+const TENDENCY_LABEL = {
+  too_much: 'Too much detail',
+  balanced: 'Right altitude',
+  too_little: 'Too vague',
+}
+
+function HabitRow({ label, score, status, statusLabel, note }) {
+  const good = score != null ? score >= 4 : status === 'good'
+  const ok = score != null ? score === 3 : status === 'ok'
+  const dot = good ? 'bg-green-500' : ok ? 'bg-amber-500' : 'bg-red-500'
+  return (
+    <div className="py-2">
+      <div className="flex items-center gap-2">
+        <span className={`h-2.5 w-2.5 rounded-full ${dot}`} />
+        <span className="text-sm font-medium text-slate-800">{label}</span>
+        {statusLabel && <span className="text-xs text-slate-400">{statusLabel}</span>}
+        {score != null && <span className="ml-auto text-xs text-slate-400">{score}/5</span>}
+      </div>
+      {note && <p className="mt-0.5 pl-[18px] text-sm text-slate-600">{note}</p>}
+    </div>
+  )
+}
+
+function DeliveryHabits({ habits }) {
+  if (!habits) return null
+  const lead = habits.leadsWithOutcome
+  const detail = habits.detailAltitude
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <h3 className="text-sm font-semibold text-slate-700">Delivery habits</h3>
+      <p className="mt-0.5 text-xs text-slate-400">The two highest-leverage things to fix.</p>
+      <div className="mt-2 divide-y divide-slate-100">
+        {lead && (
+          <HabitRow
+            label="Led with the outcome"
+            score={lead.score}
+            statusLabel={lead.present ? 'stated up front' : 'buried the result'}
+            note={lead.note}
+          />
+        )}
+        {detail && (
+          <HabitRow
+            label="Detail altitude"
+            score={detail.score}
+            statusLabel={TENDENCY_LABEL[detail.tendency] || detail.tendency}
+            note={detail.note}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
 export default function FeedbackPanel({ feedback }) {
   if (!feedback) return null
-  const { conforms, summary, scores, beats, filler, notes } = feedback
+  const { conforms, summary, scores, level, habits, beats, filler, notes } = feedback
 
   return (
     <div className="space-y-5">
+      <LevelSignal level={level} />
+      <DeliveryHabits habits={habits} />
       <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-slate-700">STAR analysis</h3>

@@ -67,11 +67,23 @@ describe('buildFeedback', () => {
     expect(fb.filler.byWord).toEqual({ um: 5, like: 3 })
   })
 
+  it('passes through the level signal when present', () => {
+    const fb = buildFeedback({
+      llm: llmResult({
+        levelSignal: { level: 'senior', rationale: 'Drove cross-team work.', signals: ['scope'] },
+      }),
+      filler: fillerResult(),
+    })
+    expect(fb.level).toMatchObject({ level: 'senior' })
+    expect(fb.level.signals).toEqual(['scope'])
+  })
+
   it('does not crash on missing analyzer data', () => {
     const fb = buildFeedback({})
     expect(fb.conforms).toBe(false)
     expect(fb.beats).toEqual([])
     expect(fb.notes).toEqual([])
     expect(fb.filler.total).toBe(0)
+    expect(fb.level).toBeNull()
   })
 })

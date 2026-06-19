@@ -4,6 +4,33 @@
 
 export const ACTIVE_FOCUS_TARGETS = [
   {
+    id: 'lead-with-outcome',
+    label: 'Lead with the outcome',
+    metric: 'leadsWithOutcome',
+    check: (session) => {
+      const lead = session?.llm?.raw?.deliveryHabits?.leadsWithOutcome
+      if (!lead) return { status: 'unknown', detail: 'No analysis yet.' }
+      return {
+        status: lead.present && lead.score >= 4 ? 'pass' : 'fail',
+        detail: lead.present ? `Stated up front (${lead.score}/5)` : 'Result was buried',
+      }
+    },
+  },
+  {
+    id: 'detail-altitude',
+    label: 'Keep detail at the right altitude',
+    metric: 'detailAltitude',
+    check: (session) => {
+      const detail = session?.llm?.raw?.deliveryHabits?.detailAltitude
+      if (!detail) return { status: 'unknown', detail: 'No analysis yet.' }
+      const labels = { too_much: 'Too much detail', balanced: 'Right altitude', too_little: 'Too vague' }
+      return {
+        status: detail.tendency === 'balanced' && detail.score >= 3 ? 'pass' : 'fail',
+        detail: labels[detail.tendency] || `Scored ${detail.score}/5`,
+      }
+    },
+  },
+  {
     id: 'fillers-under-6pm',
     label: 'Keep fillers under 6 per minute',
     metric: 'fillerRate',
