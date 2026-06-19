@@ -59,14 +59,37 @@ export async function transcribe(blob, { apiKey, signal, fallbackDurationSec } =
   }
 
   if (!res.ok) {
+    // OpenAI returns a JSON error body with a machine-readable code/type — read it so we
+    // can tell "no credits" (insufficient_quota) apart from genuine rate limiting.
+    let apiErr = null
+    try {
+      apiErr = (await res.json())?.error || null
+    } catch {
+      // non-JSON error body — fall through to status-based messages
+    }
+    const apiCode = apiErr?.code || apiErr?.type
+    const apiMsg = apiErr?.message
+
     if (res.status === 401) throw new TranscribeError('Invalid OpenAI API key.', { code: 'auth' })
-    if (res.status === 413)
+    if (res.status === 413 || apiCode === 'file_too_large')
       throw new TranscribeError('Recording too large for transcription. Try a shorter take.', {
         code: 'too_large',
       })
-    if (res.status === 429)
-      throw new TranscribeError('Transcription rate limit hit. Wait and retry.', { code: 'rate' })
-    throw new TranscribeError(`Transcription failed (${res.status}).`, { code: 'http' })
+    if (res.status === 429) {
+      if (apiCode === 'insufficient_quota')
+        throw new TranscribeError(
+          'OpenAI reports no remaining quota on this key. The Whisper API is paid — add a ' +
+            'payment method or credits at platform.openai.com (Settings → Billing), then retry.',
+          { code: 'quota' },
+        )
+      throw new TranscribeError('OpenAI rate limit hit. Wait a few seconds and retry.', {
+        code: 'rate',
+      })
+    }
+    throw new TranscribeError(
+      apiMsg ? `Transcription failed (${res.status}): ${apiMsg}` : `Transcription failed (${res.status}).`,
+      { code: 'http' },
+    )
   }
 
   const data = await res.json()
