@@ -46,6 +46,14 @@ Give a one or two sentence rationale and list the concrete signals (or missing s
 that drove the call. When the answer is too thin to tell, choose the lowest level the
 evidence supports and say what's missing to read higher.
 
+Then coach the candidate UP. For the next one or two levels above the level this answer
+demonstrates (the realistic stretch targets), give 2-3 concrete, specific things they could
+add or change in THIS answer to make it read at that level — e.g. broader or cross-org scope,
+larger and quantified business impact, navigating more ambiguity, strategic framing, driving
+through influence, setting direction for others, or raising the stakes of the decision. Tie
+the guidance to their actual story, not generic advice. If the answer already signals
+principal, return an empty list.
+
 Pay special attention to two delivery habits and grade them explicitly and honestly:
 1. LEADS WITH THE OUTCOME — did the candidate state the result/headline up front (in the
    first sentence or two), or did they bury it and make the listener wait? Reward a clear
@@ -137,8 +145,30 @@ Be specific and direct about these two — they are common, fixable habits.`,
             description: 'Concrete signals (or missing signals) that drove the call.',
             items: { type: 'string' },
           },
+          toReachHigher: {
+            type: 'array',
+            description:
+              'For the next 1-2 levels above the demonstrated one, what to add or change in THIS answer to signal that level. Empty if already at principal.',
+            items: {
+              type: 'object',
+              properties: {
+                level: {
+                  type: 'string',
+                  enum: ['mid', 'senior', 'staff', 'principal'],
+                  description: 'The higher level this guidance targets.',
+                },
+                guidance: {
+                  type: 'array',
+                  description: '2-3 concrete, story-specific changes to read at this level.',
+                  items: { type: 'string' },
+                },
+              },
+              required: ['level', 'guidance'],
+              additionalProperties: false,
+            },
+          },
         },
-        required: ['level', 'rationale', 'signals'],
+        required: ['level', 'rationale', 'signals', 'toReachHigher'],
         additionalProperties: false,
       },
       coachingNotes: {

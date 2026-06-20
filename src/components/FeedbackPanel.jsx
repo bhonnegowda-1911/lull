@@ -85,6 +85,32 @@ function LevelSignal({ level }) {
           ))}
         </ul>
       )}
+
+      {Array.isArray(level.toReachHigher) && level.toReachHigher.length > 0 && (
+        <div className="mt-4 border-t border-indigo-200 pt-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-indigo-700">
+            How to push this story higher
+          </div>
+          <div className="mt-2 space-y-3">
+            {level.toReachHigher.map((t, i) => (
+              <div key={i}>
+                <div className="flex items-center gap-2">
+                  <span className="rounded bg-indigo-600 px-1.5 py-0.5 text-[11px] font-semibold text-white">
+                    {LEVEL_LABEL[t.level] || t.level}
+                  </span>
+                  <span className="text-xs text-indigo-700">to read at this level:</span>
+                </div>
+                <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-indigo-900/85">
+                  {(t.guidance || []).map((g, j) => (
+                    <li key={j}>{g}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <p className="mt-3 text-xs text-indigo-500">
         The level this answer demonstrates — scope, ownership, and influence — not a verdict on you.
       </p>
