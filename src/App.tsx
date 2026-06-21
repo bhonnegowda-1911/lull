@@ -6,6 +6,7 @@ import BehavioralView from './components/BehavioralView'
 import SystemDesignSession from './components/sysdesign/SystemDesignSession'
 import BuildSession from './components/build/BuildSession'
 import SessionHistory from './features/history/SessionHistory'
+import Progress from './features/progress/Progress'
 
 // App shell: top nav + routed feature views. Each feature is a route so new ones (resume,
 // jobs, tutor) slot in without reworking this file. The shell owns the LLM-config modal and
@@ -15,6 +16,7 @@ const NAV = [
   { to: '/interview/behavioral', label: 'Behavioral' },
   { to: '/interview/sysdesign', label: 'System design' },
   { to: '/interview/build', label: 'Build' },
+  { to: '/progress', label: 'Progress' },
   { to: '/history', label: 'History' },
 ]
 
@@ -66,6 +68,7 @@ export default function App() {
           <Route path="/interview/behavioral" element={<BehavioralView onNeedKeys={openSettings} />} />
           <Route path="/interview/sysdesign" element={<SystemDesignSession onNeedKeys={openSettings} />} />
           <Route path="/interview/build" element={<BuildSession onNeedKeys={openSettings} />} />
+          <Route path="/progress" element={<Progress />} />
           <Route path="/history" element={<SessionHistory />} />
           <Route path="*" element={<Navigate to="/interview/behavioral" replace />} />
         </Routes>
