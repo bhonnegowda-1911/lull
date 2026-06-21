@@ -1,7 +1,8 @@
 import { STAGES } from '../../data/sysdesign/stages'
 
 // Vertical stepper showing the interview stages, the current one, and which are done or
-// skipped. Time budgets are shown as a gentle pacing cue, not a hard timer.
+// skipped. Time budgets are shown as a gentle pacing cue, not a hard timer. The stage list and
+// heading are props (defaulting to the system-design stages) so the Build mode reuses it.
 
 export type StageStatus = 'done' | 'current' | 'skipped' | 'upcoming'
 
@@ -12,17 +13,32 @@ const DOT: Record<StageStatus, string> = {
   upcoming: 'bg-white text-slate-400 border border-slate-300',
 }
 
+// Minimal stage shape the tracker renders — both Stage and BuildStage satisfy it.
+export interface TrackableStage {
+  id: string
+  label: string
+  minutes: number
+  goal: string
+}
+
 interface StageTrackerProps {
   currentStageId: string
   statusById: Record<string, StageStatus>
+  stages?: TrackableStage[]
+  heading?: string
 }
 
-export default function StageTracker({ currentStageId, statusById }: StageTrackerProps) {
+export default function StageTracker({
+  currentStageId,
+  statusById,
+  stages = STAGES,
+  heading = 'Interview stages',
+}: StageTrackerProps) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-      <h3 className="text-sm font-semibold text-slate-700">Interview stages</h3>
+      <h3 className="text-sm font-semibold text-slate-700">{heading}</h3>
       <ol className="mt-3 space-y-1">
-        {STAGES.map((stage, i) => {
+        {stages.map((stage, i) => {
           const status: StageStatus =
             statusById[stage.id] || (stage.id === currentStageId ? 'current' : 'upcoming')
           const isCurrent = stage.id === currentStageId

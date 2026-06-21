@@ -8,7 +8,7 @@
 
 const BASE = import.meta.env.VITE_API_BASE ?? ''
 
-export type SessionKind = 'behavioral' | 'sysdesign' | (string & {})
+export type SessionKind = 'behavioral' | 'sysdesign' | 'build' | (string & {})
 export type SessionStatus = 'in_progress' | 'completed'
 
 /** A history-list row — everything except the (potentially large) payload. */

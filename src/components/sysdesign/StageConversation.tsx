@@ -1,8 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
 import AnswerComposer from './AnswerComposer'
 import StageTimer, { type PaceStatus } from './StageTimer'
-import type { Stage } from '../../data/sysdesign/stages'
 import type { Turn, TurnRole } from '../../lib/sysdesign/conversation'
+
+// The minimal stage shape this surface renders — both the system-design Stage and the Build
+// mode's BuildStage satisfy it (an absent `optional` simply hides the skip control).
+export interface ConversableStage {
+  id: string
+  label: string
+  minutes: number
+  goal: string
+  optional?: boolean
+}
 
 const PACE_NUDGE: Record<Exclude<PaceStatus, 'ok'>, string> = {
   over: 'border-amber-200 bg-amber-50 text-amber-800',
@@ -32,7 +41,7 @@ function Bubble({ role, text }: { role: TurnRole; text: string }) {
 }
 
 interface StageConversationProps {
-  stage: Stage
+  stage: ConversableStage
   transcript: Turn[]
   aligned: boolean
   thinking: boolean

@@ -57,7 +57,9 @@ export interface StageSessionInput {
   skipped: boolean
 }
 
-const REPORT_SCHEMA = {
+// Exported so sibling modes (e.g. the Build mode) can produce the same leveling-report shape
+// and reuse the report renderer, without redefining this ~90-line schema.
+export const REPORT_SCHEMA = {
   type: 'object',
   properties: {
     overall: {

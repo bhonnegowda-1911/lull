@@ -1,6 +1,8 @@
 import { PROBLEMS } from '../../data/sysdesign/problems'
 
-// Landing view for the system-design mode: choose a problem to start an interview.
+// Landing view for an interview mode: choose a problem to start. Used by system-design and,
+// with a different problem list/copy, by the Build mode — so the problem list and intro are
+// props (defaulting to the system-design library for the original call site).
 
 const DIFFICULTY_STYLE: Record<string, string> = {
   'Warm-up': 'bg-green-100 text-green-700',
@@ -8,16 +10,33 @@ const DIFFICULTY_STYLE: Record<string, string> = {
   Hard: 'bg-red-100 text-red-700',
 }
 
-export default function ProblemPicker({ onStart }: { onStart: (id: string) => void }) {
+// Minimal shape the picker renders — both Problem and BuildProblem satisfy it.
+export interface PickableProblem {
+  id: string
+  title: string
+  difficulty: string
+  statement: string
+}
+
+interface ProblemPickerProps {
+  onStart: (id: string) => void
+  problems?: PickableProblem[]
+  heading?: string
+  intro?: string
+}
+
+export default function ProblemPicker({
+  onStart,
+  problems = PROBLEMS,
+  heading = 'Pick a problem',
+  intro = 'You’ll work through the interview stage by stage. The interviewer probes with follow-ups; at the end you get a leveling read (mid / senior / staff).',
+}: ProblemPickerProps) {
   return (
     <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <h2 className="text-base font-semibold text-slate-900">Pick a problem</h2>
-      <p className="mt-0.5 text-sm text-slate-500">
-        You’ll work through the interview stage by stage. The interviewer probes with
-        follow-ups; at the end you get a leveling read (mid / senior / staff).
-      </p>
+      <h2 className="text-base font-semibold text-slate-900">{heading}</h2>
+      <p className="mt-0.5 text-sm text-slate-500">{intro}</p>
       <ul className="mt-4 space-y-2">
-        {PROBLEMS.map((p) => (
+        {problems.map((p) => (
           <li key={p.id}>
             <button
               type="button"

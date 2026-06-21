@@ -6,14 +6,16 @@ import { listSessions, getSession, deleteSession, type SessionKind, type Session
 // Opening a row loads the full record and hands it to the matching feature route via router
 // state, which hydrates it (resume an in-progress interview, or view a completed result).
 
-const KIND_LABEL: Record<string, string> = { behavioral: 'Behavioral', sysdesign: 'System design' }
+const KIND_LABEL: Record<string, string> = { behavioral: 'Behavioral', sysdesign: 'System design', build: 'Build' }
 const ROUTE_FOR: Record<string, string> = {
   behavioral: '/interview/behavioral',
   sysdesign: '/interview/sysdesign',
+  build: '/interview/build',
 }
 const KIND_BADGE: Record<string, string> = {
   behavioral: 'bg-indigo-100 text-indigo-700',
   sysdesign: 'bg-emerald-100 text-emerald-700',
+  build: 'bg-violet-100 text-violet-700',
 }
 
 function relativeDate(iso: string): string {
@@ -33,6 +35,7 @@ const FILTERS: Array<{ value: SessionKind | 'all'; label: string }> = [
   { value: 'all', label: 'All' },
   { value: 'behavioral', label: 'Behavioral' },
   { value: 'sysdesign', label: 'System design' },
+  { value: 'build', label: 'Build' },
 ]
 
 export default function SessionHistory() {

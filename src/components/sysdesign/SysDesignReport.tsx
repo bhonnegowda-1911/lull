@@ -35,9 +35,16 @@ function LevelLadder({ level }: { level: SysDesignLevel }) {
 interface SysDesignReportProps {
   report: SysDesignReportData | null
   onRestart: () => void
+  /** Resolve a stage id to its display label. Defaults to the system-design stages; the Build
+   *  mode passes its own so this renderer is shared across both leveling reports. */
+  stageLabel?: (id: string) => string
 }
 
-export default function SysDesignReport({ report, onRestart }: SysDesignReportProps) {
+export default function SysDesignReport({
+  report,
+  onRestart,
+  stageLabel = (id) => getStage(id).label,
+}: SysDesignReportProps) {
   if (!report) return null
   const { overall, perStage = [], toReachHigher = [], topPriorities = [], referenceSolution } = report
 
@@ -100,7 +107,7 @@ export default function SysDesignReport({ report, onRestart }: SysDesignReportPr
                   {s.rating}/5
                 </span>
                 <span className="text-sm font-medium text-slate-800">
-                  {getStage(s.stageId).label}
+                  {stageLabel(s.stageId)}
                 </span>
                 <span className="ml-auto rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-medium text-slate-600">
                   {LEVEL_LABEL[s.level] || s.level}
@@ -151,7 +158,7 @@ export default function SysDesignReport({ report, onRestart }: SysDesignReportPr
           <div className="mt-3 space-y-3">
             {(referenceSolution.perStage || []).map((s) => (
               <div key={s.stageId}>
-                <div className="text-sm font-medium text-slate-800">{getStage(s.stageId).label}</div>
+                <div className="text-sm font-medium text-slate-800">{stageLabel(s.stageId)}</div>
                 <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-slate-600">
                   {(s.points || []).map((p, i) => (
                     <li key={i}>{p}</li>
