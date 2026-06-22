@@ -1,22 +1,63 @@
 import { chatStructured } from '../llmClient'
 import { GRADING_TEMPERATURE } from '../models'
 import { DEFAULT_CRITERIA, type Criteria } from '../../data/criteria'
+import type { Story } from '../../data/stories'
+import { FACETS, facetText, type Project } from '../../data/projects'
 import type { AnalyzerContext, FillerResult, LlmAnalyzerResult, StarGrading, Transcript } from '../../types'
 
 // Criteria-driven analyzer. The criteria object supplies the system prompt and the
 // response schema; this analyzer just assembles the user message (question + transcript +
-// injected filler summary) and calls the provider-agnostic client. One LLM call total.
+// injected filler summary +, in coaching mode, the candidate's true stories) and calls the
+// provider-agnostic client. One LLM call total.
+
+function storiesBlock(stories: Story[]): string {
+  const lines = [
+    `CANDIDATE'S TRUE STORIES (ground truth — coach the telling against these; do not invent facts):`,
+  ]
+  for (const s of stories) {
+    lines.push('')
+    lines.push(`- TITLE: ${s.title}${s.roleRef ? ` (${s.roleRef})` : ''}`)
+    if (s.star.situation) lines.push(`  Situation: ${s.star.situation}`)
+    if (s.star.task) lines.push(`  Task: ${s.star.task}`)
+    if (s.star.actions?.length) lines.push(`  Actions: ${s.star.actions.join('; ')}`)
+    if (s.star.result) lines.push(`  Result: ${s.star.result}`)
+    if (s.impact.metrics?.length) lines.push(`  Metrics: ${s.impact.metrics.join('; ')}`)
+    lines.push(`  Ownership: ${s.impact.ownership}; blast radius: ${s.impact.blastRadius}`)
+    if (s.trueCeilingLevel) lines.push(`  Work demonstrates up to: ${s.trueCeilingLevel}`)
+  }
+  return lines.join('\n')
+}
+
+function projectsBlock(projects: Project[]): string {
+  const lines = [
+    `CANDIDATE'S TRUE PROJECTS (deeper ground truth — the work behind the stories; do not invent facts):`,
+  ]
+  for (const p of projects) {
+    lines.push('')
+    lines.push(`- PROJECT: ${p.title}${p.roleRef ? ` (${p.roleRef})` : ''}`)
+    if (p.summary) lines.push(`  Built: ${p.summary}`)
+    for (const facet of FACETS) {
+      const val = facetText(p.facets?.[facet.id]).trim()
+      if (val) lines.push(`  ${facet.label}: ${val}`)
+    }
+  }
+  return lines.join('\n')
+}
 
 function buildUserMessage({
   question,
   transcript,
   durationSec,
   filler,
+  stories,
+  projects,
 }: {
   question: string
   transcript: Transcript
   durationSec: number | null
   filler?: FillerResult
+  stories?: Story[]
+  projects?: Project[]
 }): string {
   const lines: string[] = []
   lines.push(`INTERVIEW QUESTION:\n${question || '(none provided)'}`)
@@ -35,6 +76,14 @@ function buildUserMessage({
       .map(([w, c]) => `${w} ×${c}`)
     if (top.length) lines.push(`- Most frequent: ${top.join(', ')}`)
   }
+  if (stories?.length) {
+    lines.push('')
+    lines.push(storiesBlock(stories))
+  }
+  if (projects?.length) {
+    lines.push('')
+    lines.push(projectsBlock(projects))
+  }
   return lines.join('\n')
 }
 
@@ -48,6 +97,8 @@ export function makeLlmAnalyzer(criteria: Criteria = DEFAULT_CRITERIA) {
         transcript: ctx.transcript,
         durationSec: ctx.durationSec,
         filler: ctx.filler,
+        stories: ctx.stories,
+        projects: ctx.projects,
       })
 
       const { parsed, raw } = await chatStructured<StarGrading>({

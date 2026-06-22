@@ -80,6 +80,8 @@ export interface StarGrading {
   deliveryHabits: DeliveryHabits
   levelSignal: LevelSignal
   coachingNotes: CoachingNote[]
+  /** Present only when the grader was given the candidate's true stories (coaching mode). */
+  storyFidelity?: StoryFidelity
 }
 
 // ---- Analyzer results & merged feedback ----------------------------------
@@ -108,6 +110,26 @@ export interface FillerAnalyzerResult {
 export type FeedbackBeat = StarBeat & { key: string; label: string }
 export type FeedbackNote = CoachingNote & { source: 'star' | 'filler' }
 
+// ---- Coaching-mode content feedback (story bank only) --------------------
+// Produced only when the grader is given the candidate's true stories. It compares how the story
+// was TOLD against what actually happened: where the telling undersold the real impact, claimed
+// team credit for solo work, or where a different story in the bank would have been stronger.
+
+export interface StoryFidelity {
+  /** Title of the bank story the grader judged the answer to be telling, or null if none matched. */
+  matchedStoryTitle: string | null
+  /** Points where the telling sold the work short of its real scope/impact. */
+  underSold: string[]
+  /** Concrete impact in the true story that was left out of the telling. */
+  omittedImpact: string[]
+  /** Spots where solo work was framed as "we"/team. */
+  misattributedToTeam: string[]
+  /** Title of a stronger story in the bank for this prompt, if one fits better. */
+  betterExampleTitle: string | null
+  /** One- or two-sentence overall content note. */
+  note: string
+}
+
 export interface Feedback {
   conforms: boolean
   summary: string
@@ -117,6 +139,8 @@ export interface Feedback {
   beats: FeedbackBeat[]
   filler: { total: number; perMinute: number | null; byWord: Record<string, number> }
   notes: FeedbackNote[]
+  /** Coaching-mode only: content critique against the candidate's true stories. */
+  storyFidelity: StoryFidelity | null
 }
 
 /** Context passed to each analyzer's `run`. */
@@ -126,6 +150,10 @@ export interface AnalyzerContext {
   durationSec: number | null
   fillers?: string[]
   filler?: FillerResult
+  /** Coaching mode: the candidate's matched true stories, for content critique. */
+  stories?: import('./data/stories').Story[]
+  /** Coaching mode: matched projects whose facets are the deeper ground truth. */
+  projects?: import('./data/projects').Project[]
   signal?: AbortSignal
 }
 

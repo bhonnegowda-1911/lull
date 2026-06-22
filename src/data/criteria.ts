@@ -73,7 +73,18 @@ Pay special attention to two delivery habits and grade them explicitly and hones
    on background, setup, and technical minutiae? Classify the tendency as too_much (rambling
    / too in-the-weeds), balanced, or too_little (too vague, no substance). Most candidates
    err toward too_much.
-Be specific and direct about these two — they are common, fixable habits.`,
+Be specific and direct about these two — they are common, fixable habits.
+
+CONTENT COACHING (only when "CANDIDATE'S TRUE STORIES" or "CANDIDATE'S TRUE PROJECTS" are
+provided): you also have the candidate's own ground truth — their stories and the richer projects
+behind them (captured across facets like ownership, influence, ambiguity, prioritization). Compare
+how they TOLD the answer against what actually happened, and fill "storyFidelity": name the matched
+story or project; list where the telling UNDERSOLD the real scope/impact (use the project facets —
+e.g. they owned it org-wide but said "we"); list concrete impact present in the ground truth but
+OMITTED from the telling; flag solo work framed as "we"/team (misattributedToTeam); and if a
+DIFFERENT provided story/project is a stronger fit for this question, name it in betterExampleTitle.
+Use ONLY the provided ground truth — do not invent facts. If none is provided, OMIT storyFidelity
+entirely.`,
   schema: {
     type: 'object',
     properties: {
@@ -195,6 +206,39 @@ Be specific and direct about these two — they are common, fixable habits.`,
           required: ['title', 'detail', 'severity'],
           additionalProperties: false,
         },
+      },
+      storyFidelity: {
+        type: 'object',
+        description:
+          "Content critique vs. the candidate's true stories. INCLUDE ONLY when true stories were provided; otherwise omit this field.",
+        properties: {
+          matchedStoryTitle: {
+            type: 'string',
+            description: 'Title of the provided story the answer was telling; empty string if none matched.',
+          },
+          underSold: {
+            type: 'array',
+            description: 'Where the telling sold the work short of its real scope/impact.',
+            items: { type: 'string' },
+          },
+          omittedImpact: {
+            type: 'array',
+            description: 'Concrete impact in the true story left out of the telling.',
+            items: { type: 'string' },
+          },
+          misattributedToTeam: {
+            type: 'array',
+            description: 'Spots where solo work was framed as "we"/team.',
+            items: { type: 'string' },
+          },
+          betterExampleTitle: {
+            type: 'string',
+            description: 'Title of a stronger provided story for this question; empty string if none.',
+          },
+          note: { type: 'string', description: 'One or two sentence overall content note.' },
+        },
+        required: ['matchedStoryTitle', 'underSold', 'omittedImpact', 'misattributedToTeam', 'betterExampleTitle', 'note'],
+        additionalProperties: false,
       },
     },
     required: ['conforms', 'perBeat', 'scores', 'summary', 'deliveryHabits', 'levelSignal', 'coachingNotes'],

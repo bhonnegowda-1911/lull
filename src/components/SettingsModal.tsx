@@ -1,8 +1,8 @@
 import { useApiKeys } from '../context/ApiKeyContext'
 
-// LLM keys now live on the server (set in server/.env, e.g. ANTHROPIC_API_KEY / OPENAI_API_KEY).
-// This modal is informational: it shows whether the backend is reachable and which providers
-// it has configured, instead of collecting keys in the browser.
+// LLM keys live on the server (set in server/.env). This modal is informational: it shows whether
+// the backend is reachable and which providers it has configured. Your profile (resume + target
+// level) and the project/story bank are managed in the Prep section, not here.
 
 function StatusRow({ label, ok }: { label: string; ok: boolean }) {
   return (
