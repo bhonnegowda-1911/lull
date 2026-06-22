@@ -69,6 +69,8 @@ export interface ModeTrend {
   kind: SessionKind
   count: number
   level: Point[]
+  /** 0–100 performance score per session, oldest→newest — drives XP & rank (see game.ts). */
+  score: Point[]
   /** behavioral only */
   fillerPerMin?: Point[]
   /** behavioral only: mean of present STAR scores (clarity/structure/impact) */
@@ -76,6 +78,32 @@ export interface ModeTrend {
 }
 
 const MODES: SessionKind[] = ['behavioral', 'sysdesign', 'build']
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, n))
+}
+
+// Each mode's top of ladder, for normalizing a level→score (sysdesign/build cap at staff).
+const MODE_MAX_LEVEL: Record<string, number> = { behavioral: MAX_LEVEL, sysdesign: 4, build: 4 }
+
+/** Map a level ordinal to 0–100 within a mode's ladder (junior→0, top→100). */
+export function scoreFromLevel(ord: number, maxOrd: number): number {
+  if (maxOrd <= 1) return 100
+  return clamp(((ord - 1) / (maxOrd - 1)) * 100, 0, 100)
+}
+
+/**
+ * Behavioral per-session score: STAR quality (1–5 → 0–100) weighted with a filler-rate
+ * penalty (0/min → full, ≥15/min → 0). Uses whichever signals are present; null if neither.
+ */
+export function behavioralScore(starAvg: number | null, perMinute: number | null): number | null {
+  const star = starAvg != null ? ((starAvg - 1) / 4) * 100 : null
+  const filler = perMinute != null ? clamp(1 - perMinute / 15, 0, 1) * 100 : null
+  if (star == null && filler == null) return null
+  if (star == null) return filler as number
+  if (filler == null) return star
+  return 0.7 * star + 0.3 * filler
+}
 
 /**
  * Load completed sessions and shape them into per-mode trends. Behavioral payloads are fetched
@@ -94,9 +122,16 @@ export async function loadProgress(): Promise<ModeTrend[]> {
   for (const kind of MODES) {
     const rows = byKind.get(kind) ?? []
     if (rows.length === 0) continue
-    const trend: ModeTrend = { kind, count: rows.length, level: buildLevelSeries(rows) }
+    const level = buildLevelSeries(rows)
+    const trend: ModeTrend = { kind, count: rows.length, level, score: [] }
     if (kind === 'behavioral') {
-      Object.assign(trend, await behavioralMetrics(rows))
+      const m = await behavioralMetrics(rows)
+      trend.fillerPerMin = m.fillerPerMin
+      trend.starAvg = m.starAvg
+      trend.score = m.score
+    } else {
+      const maxOrd = MODE_MAX_LEVEL[kind] ?? MAX_LEVEL
+      trend.score = level.map((p) => ({ t: p.t, value: scoreFromLevel(p.value, maxOrd) }))
     }
     trends.push(trend)
   }
@@ -106,23 +141,26 @@ export async function loadProgress(): Promise<ModeTrend[]> {
 /** Pull filler/min and average STAR score per behavioral session, oldest→newest. */
 async function behavioralMetrics(
   rows: SessionSummary[],
-): Promise<{ fillerPerMin: Point[]; starAvg: Point[] }> {
+): Promise<{ fillerPerMin: Point[]; starAvg: Point[]; score: Point[] }> {
   const records = await Promise.all(rows.map((r) => getSession<BehavioralPayload>(r.id)))
   const fillerPerMin: Point[] = []
   const starAvg: Point[] = []
+  const score: Point[] = []
   for (const rec of records) {
     if (!rec?.payload?.session) continue
     const t = Date.parse(rec.completed_at ?? rec.created_at)
     if (Number.isNaN(t)) continue
     const { filler, feedback } = rec.payload.session
-    if (filler && typeof filler.perMinute === 'number') {
-      fillerPerMin.push({ t, value: filler.perMinute })
-    }
+    const perMinute = filler && typeof filler.perMinute === 'number' ? filler.perMinute : null
+    if (perMinute != null) fillerPerMin.push({ t, value: perMinute })
     const scores = feedback?.scores ? Object.values(feedback.scores).filter((n) => typeof n === 'number') : []
     const avg = mean(scores)
     if (avg != null) starAvg.push({ t, value: avg })
+    const s = behavioralScore(avg, perMinute)
+    if (s != null) score.push({ t, value: s })
   }
   fillerPerMin.sort((a, b) => a.t - b.t)
   starAvg.sort((a, b) => a.t - b.t)
-  return { fillerPerMin, starAvg }
+  score.sort((a, b) => a.t - b.t)
+  return { fillerPerMin, starAvg, score }
 }
