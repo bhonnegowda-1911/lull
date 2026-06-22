@@ -2,17 +2,22 @@ import { useState } from 'react'
 import ResumeTab from './ResumeTab'
 import ProjectsTab from './ProjectsTab'
 import StoryBank from '../stories/StoryBank'
+import JobsTab from './JobsTab'
+import MatchTab from './MatchTab'
 
-// The Prep hub ties the three ground-truth tiers together: Resume (thin, what interview mode sees)
-// → Projects (rich, level-aware capture) → Stories (answer-shaped, mined from projects). Tabs keep
-// it one mental model; each tab owns its own data loading.
+// The Prep hub ties the ground-truth tiers together: Resume (thin, what interview mode sees) →
+// Projects (rich, level-aware capture) → Stories (answer-shaped, mined from projects), plus the
+// job-fit loop: Jobs (target JDs) → Match (score the resume against one). Tabs keep it one mental
+// model; each tab owns its own data loading.
 
-type Tab = 'resume' | 'projects' | 'stories'
+type Tab = 'resume' | 'projects' | 'stories' | 'jobs' | 'match'
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: 'resume', label: 'Resume' },
   { id: 'projects', label: 'Projects' },
   { id: 'stories', label: 'Stories' },
+  { id: 'jobs', label: 'Jobs' },
+  { id: 'match', label: 'Match' },
 ]
 
 export default function PrepHub() {
@@ -44,6 +49,8 @@ export default function PrepHub() {
       {tab === 'resume' && <ResumeTab onBootstrapped={() => setTab('projects')} />}
       {tab === 'projects' && <ProjectsTab />}
       {tab === 'stories' && <StoryBank />}
+      {tab === 'jobs' && <JobsTab />}
+      {tab === 'match' && <MatchTab />}
     </div>
   )
 }

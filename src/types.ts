@@ -167,3 +167,70 @@ export interface Session {
   feedback: Feedback
   isVideo: boolean
 }
+
+// ---- Resume ↔ job-description fit ----------------------------------------
+// A target job is parsed once into structure (ParsedJob), then the resume is scored against it
+// (ResumeFit). Fit is a score + structured gaps, never a binary pass/fail. The `fixable` tag on a
+// gap closes the loop to the rest of the app: 'reword' = you have it but didn't surface it,
+// 'add_story' = a story in your bank covers it, 'genuine_gap' = a real hole.
+
+export interface JobSkill {
+  skill: string
+  category: string
+}
+
+export interface ParsedJob {
+  title: string
+  company: string
+  seniority: BehavioralLevel
+  mustHaveSkills: JobSkill[]
+  niceToHaveSkills: string[]
+  responsibilities: string[]
+  /** ATS keywords/terms to check the resume covers. */
+  keywords: string[]
+}
+
+/** A stored target job: pasted text plus its parsed structure. */
+export interface JobDescription {
+  id: string
+  title: string
+  company: string
+  rawText: string
+  parsed: ParsedJob | null
+}
+
+export type FitVerdict = 'strong' | 'plausible' | 'stretch' | 'mismatch'
+export type CoverageStatus = 'covered' | 'partial' | 'missing'
+export type FixKind = 'reword' | 'add_story' | 'genuine_gap'
+
+export interface RequirementCoverage {
+  requirement: string
+  status: CoverageStatus
+  evidence: string | null
+  severity: Severity
+}
+
+export interface FitGap {
+  title: string
+  detail: string
+  severity: Severity
+  fixable: FixKind
+}
+
+export interface ResumeFit {
+  /** 0–100 overall fit. */
+  fitScore: number
+  verdict: FitVerdict
+  seniorityMatch: {
+    jdLevel: string
+    resumeImpliedLevel: string
+    assessment: 'under' | 'match' | 'over'
+    note: string
+  }
+  requirementCoverage: RequirementCoverage[]
+  keywordCoverage: { matched: string[]; missing: string[]; coveragePct: number }
+  quantifiedImpact: { score: Score; note: string }
+  gaps: FitGap[]
+  strengths: string[]
+  summary: string
+}

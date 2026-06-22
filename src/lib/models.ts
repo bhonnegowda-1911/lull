@@ -9,6 +9,9 @@
 
 export const DEFAULT_MODEL = 'claude-sonnet-4-6'
 export const REPORT_MODEL = 'claude-opus-4-8'
+// FAST_MODEL — Haiku 4.5: cheapest/fastest. Used for mechanical extraction (e.g. parsing a job
+// description into structure) where throughput matters more than deep judgment. Accepts temperature.
+export const FAST_MODEL = 'claude-haiku-4-5'
 
 // Grading wants deterministic output; pass this as `temperature` to Sonnet/Haiku calls.
 // Do NOT pass any temperature to Opus 4.8 (it 400s).

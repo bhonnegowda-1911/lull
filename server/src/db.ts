@@ -92,6 +92,20 @@ CREATE TABLE IF NOT EXISTS facet_drafts (
   updated_at timestamptz NOT NULL DEFAULT now(),
   PRIMARY KEY (project_id, facet_id)
 );
+
+-- Target job descriptions to measure the resume against. Curated/editable like stories/projects, so
+-- its own table; raw_text is the pasted JD and parsed holds the LLM-extracted structure (skills,
+-- seniority, keywords) so a JD is parsed once and re-used for fit analysis.
+CREATE TABLE IF NOT EXISTS job_descriptions (
+  id         uuid PRIMARY KEY,
+  title      text NOT NULL,
+  company    text,
+  raw_text   text,
+  parsed     jsonb NOT NULL DEFAULT '{}',
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS jobs_updated_idx ON job_descriptions (updated_at DESC);
 `
 
 /** Create tables if they don't exist. No migration tool yet — additive DDL only. */

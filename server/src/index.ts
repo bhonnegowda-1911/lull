@@ -10,6 +10,7 @@ import { profile } from './modules/profile.js'
 import { stories } from './modules/stories.js'
 import { projects } from './modules/projects.js'
 import { facetDrafts } from './modules/facetDrafts.js'
+import { jobs } from './modules/jobs.js'
 
 // Modular-monolith API: one service, one shared db pool + object store, feature routers
 // mounted under /api. New feature modules (resume, jobs, tutor) slot in the same way.
@@ -28,6 +29,7 @@ app.use('/api/profile', profile)
 app.use('/api/stories', stories)
 app.use('/api/projects', projects)
 app.use('/api/facet-drafts', facetDrafts)
+app.use('/api/jobs', jobs)
 
 // Surface async handler errors as JSON rather than crashing the process.
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
