@@ -8,7 +8,7 @@ import { pool } from '../db.js'
 
 export const jobs = Router()
 
-const COLUMNS = 'id, title, company, raw_text, parsed, problem_picks, behavioral_picks, created_at, updated_at'
+const COLUMNS = 'id, title, company, raw_text, parsed, problem_picks, behavioral_picks, recruiter_picks, created_at, updated_at'
 
 // GET /api/jobs → list, newest activity first.
 jobs.get('/', async (_req, res) => {
@@ -23,14 +23,14 @@ jobs.get('/:id', async (req, res) => {
   res.json(rows[0])
 })
 
-// PUT /api/jobs/:id → upsert. Body: { title, company, rawText, parsed, problemPicks, behavioralPicks }.
+// PUT /api/jobs/:id → upsert. Body: { title, company, rawText, parsed, problemPicks, behavioralPicks, recruiterPicks }.
 jobs.put('/:id', async (req, res) => {
   const { id } = req.params
-  const { title = null, company = null, rawText = null, parsed = {}, problemPicks = [], behavioralPicks = [] } = req.body ?? {}
+  const { title = null, company = null, rawText = null, parsed = {}, problemPicks = [], behavioralPicks = [], recruiterPicks = [] } = req.body ?? {}
   if (!title) return res.status(400).json({ error: 'title is required' })
   const { rows } = await pool.query(
-    `INSERT INTO job_descriptions (id, title, company, raw_text, parsed, problem_picks, behavioral_picks, updated_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+    `INSERT INTO job_descriptions (id, title, company, raw_text, parsed, problem_picks, behavioral_picks, recruiter_picks, updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
      ON CONFLICT (id) DO UPDATE SET
        title = EXCLUDED.title,
        company = EXCLUDED.company,
@@ -38,9 +38,10 @@ jobs.put('/:id', async (req, res) => {
        parsed = EXCLUDED.parsed,
        problem_picks = EXCLUDED.problem_picks,
        behavioral_picks = EXCLUDED.behavioral_picks,
+       recruiter_picks = EXCLUDED.recruiter_picks,
        updated_at = now()
      RETURNING ${COLUMNS}`,
-    [id, title, company, rawText, JSON.stringify(parsed), JSON.stringify(problemPicks), JSON.stringify(behavioralPicks)],
+    [id, title, company, rawText, JSON.stringify(parsed), JSON.stringify(problemPicks), JSON.stringify(behavioralPicks), JSON.stringify(recruiterPicks)],
   )
   res.json(rows[0])
 })

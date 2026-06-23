@@ -9,6 +9,7 @@ import { generateResume } from '../../lib/resume/generate'
 import GeneratedResumeView from './GeneratedResumeView'
 import InterviewPlan from './InterviewPlan'
 import BehavioralPlan from './BehavioralPlan'
+import RecruiterPlan from './RecruiterPlan'
 import Pending from '../../components/Pending'
 import type { Project } from '../../data/projects'
 import type { Profile } from '../../data/stories'
@@ -265,8 +266,10 @@ export default function MatchTab() {
         />
       )}
 
-      {selected && <InterviewPlan key={`sd-${selected.id}`} job={selected} onSaved={() => void refreshJobs()} />}
+      {/* The interview loop in the order a company runs it: recruiter screen → behavioral → system design. */}
+      {selected && <RecruiterPlan key={`rec-${selected.id}`} job={selected} onSaved={() => void refreshJobs()} />}
       {selected && <BehavioralPlan key={`bx-${selected.id}`} job={selected} onSaved={() => void refreshJobs()} />}
+      {selected && <InterviewPlan key={`sd-${selected.id}`} job={selected} onSaved={() => void refreshJobs()} />}
     </div>
   )
 }

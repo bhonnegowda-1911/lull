@@ -208,6 +208,14 @@ export interface BehavioralPick {
   rationale: string
 }
 
+/** A recruiter-screen question the JD selector recommends. Same shape/source as BehavioralPick, but
+ *  drawn from the bank's "Recruiter screen" set (motivation, logistics, high-level fit). */
+export interface RecruiterPick {
+  promptId: string
+  confidence: 'high' | 'medium' | 'low'
+  rationale: string
+}
+
 /** A stored target job: pasted text plus its parsed structure. */
 export interface JobDescription {
   id: string
@@ -219,6 +227,8 @@ export interface JobDescription {
   problemPicks: ProblemPick[]
   /** Behavioral/managerial questions this JD points to (ranked), saved for practice. */
   behavioralPicks: BehavioralPick[]
+  /** Recruiter-screen questions this JD points to (ranked), saved for practice. */
+  recruiterPicks: RecruiterPick[]
 }
 
 export type FitVerdict = 'strong' | 'plausible' | 'stretch' | 'mismatch'

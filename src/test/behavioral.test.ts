@@ -31,6 +31,13 @@ describe('behavioral question bank + JD selector catalog', () => {
     }
   })
 
+  it('has a Recruiter screen set the recruiter selector draws from, disjoint from the rest', () => {
+    const recruiter = PROMPTS.filter((p) => p.category === 'Recruiter screen')
+    expect(recruiter.length).toBeGreaterThanOrEqual(4)
+    // The behavioral selector excludes this category, so the two rounds don't overlap.
+    expect(recruiter.every((p) => p.id.startsWith('rec-'))).toBe(true)
+  })
+
   it('has no duplicate prompt ids', () => {
     const ids = PROMPTS.map((p) => p.id)
     expect(new Set(ids).size).toBe(ids.length)
