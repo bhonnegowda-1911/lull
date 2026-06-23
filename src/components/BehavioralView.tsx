@@ -185,6 +185,16 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resume?.id])
 
+  // Pre-select a question chosen from a target job's plan (Prep → Match → Practice), ready to record.
+  const startPromptId = (location.state as { startPromptId?: string } | null)?.startPromptId
+  useEffect(() => {
+    if (!startPromptId) return
+    setPromptId(startPromptId)
+    dispatch({ type: 'RESET' })
+    window.history.replaceState({}, '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startPromptId])
+
   const prompt = PROMPTS.find((p) => p.id === promptId) || DEFAULT_PROMPT
   const busy = state.phase === 'transcribing' || state.phase === 'followups_generating' || state.phase === 'grading'
 
@@ -313,21 +323,21 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
 
         {state.phase === 'idle' && (
           <div className="space-y-1">
-            <div className="inline-flex rounded-md border border-slate-200 p-0.5 text-sm">
+            <div className="inline-flex rounded-md border border-stone-200 p-0.5 text-sm">
               {(['interview', 'coaching'] as const).map((m) => (
                 <button
                   key={m}
                   type="button"
                   onClick={() => setMode(m)}
                   className={`rounded px-3 py-1 capitalize ${
-                    mode === m ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:text-slate-900'
+                    mode === m ? 'bg-terracotta-600 text-white' : 'text-stone-600 hover:text-stone-900'
                   }`}
                 >
                   {m}
                 </button>
               ))}
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-xs text-stone-500">
               {mode === 'interview'
                 ? `The interviewer knows only your resume and holds you to a ${profile.targetLevel} bar — no story-bank feedback.`
                 : 'Feedback critiques your telling against your confirmed stories (undersold impact, “we” vs “I”, a stronger example).'}
@@ -342,10 +352,10 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
         )}
 
         {busy && (
-          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600" />
-            <p className="mt-3 text-sm text-slate-600">{STAGE_LABEL[state.phase]}</p>
-            <p className="mt-1 text-xs text-slate-400">
+          <div className="rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-8 text-center shadow-sm">
+            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-stone-200 border-t-terracotta-600" />
+            <p className="mt-3 text-sm text-stone-600">{STAGE_LABEL[state.phase]}</p>
+            <p className="mt-1 text-xs text-stone-400">
               This sends your audio to OpenAI and Anthropic (via the backend) and usually takes 10–20s.
             </p>
           </div>
@@ -354,13 +364,13 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
         {/* Follow-up phase: probe before grading. */}
         {state.phase === 'followups' && state.mainTranscript && (
           <>
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-5 shadow-sm">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-700">Your answer</h3>
+                <h3 className="text-sm font-semibold text-stone-700">Your answer</h3>
                 <button
                   type="button"
                   onClick={handleReset}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                  className="rounded-md border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-50"
                 >
                   Start over
                 </button>
@@ -369,23 +379,23 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
                 <ReplayMedia src={state.replayUrl} controls className={state.isVideo ? 'mt-3 w-full rounded-md' : 'mt-3 w-full'} />
               )}
               <details className="mt-3 text-sm">
-                <summary className="cursor-pointer text-slate-500">Transcript</summary>
-                <p className="mt-2 leading-relaxed text-slate-600">{state.mainTranscript.text}</p>
+                <summary className="cursor-pointer text-stone-500">Transcript</summary>
+                <p className="mt-2 leading-relaxed text-stone-600">{state.mainTranscript.text}</p>
               </details>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-5 shadow-sm">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-700">Follow-up questions</h3>
-                <span className="text-xs text-slate-400">The interviewer probes before grading</span>
+                <h3 className="text-sm font-semibold text-stone-700">Follow-up questions</h3>
+                <span className="text-xs text-stone-400">The interviewer probes before grading</span>
               </div>
               {state.followups.length > 0 ? (
-                <p className="mt-2 text-sm text-slate-500">
+                <p className="mt-2 text-sm text-stone-500">
                   Answer these the way you would in the room, then get your feedback. You can skip any
                   you want — the final grade covers everything you said.
                 </p>
               ) : (
-                <p className="mt-2 text-sm text-slate-500">
+                <p className="mt-2 text-sm text-stone-500">
                   No follow-ups this time. Get your feedback whenever you’re ready.
                 </p>
               )}
@@ -398,12 +408,12 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
                 <button
                   type="button"
                   onClick={handleGetFeedback}
-                  className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500"
+                  className="rounded-md bg-terracotta-600 px-4 py-2 text-sm font-medium text-white hover:bg-terracotta-500"
                 >
                   Get feedback
                 </button>
                 {state.followups.length > 0 && (
-                  <span className="text-xs text-slate-400">
+                  <span className="text-xs text-stone-400">
                     {answeredCount} of {state.followups.length} answered
                   </span>
                 )}
@@ -424,7 +434,7 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
             <button
               type="button"
               onClick={handleReset}
-              className="mt-4 rounded-md bg-white px-4 py-2 text-sm font-medium text-slate-700 ring-1 ring-slate-300 hover:bg-slate-50"
+              className="mt-4 rounded-md bg-white px-4 py-2 text-sm font-medium text-stone-700 ring-1 ring-stone-300 hover:bg-stone-50"
             >
               Try another take
             </button>
@@ -433,13 +443,13 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
 
         {state.phase === 'done' && state.session && (
           <>
-            <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-5 shadow-sm">
               <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-slate-700">Your recording</h3>
+                <h3 className="text-sm font-semibold text-stone-700">Your recording</h3>
                 <button
                   type="button"
                   onClick={handleReset}
-                  className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500"
+                  className="rounded-md bg-terracotta-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-terracotta-500"
                 >
                   New take
                 </button>
@@ -449,8 +459,8 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
               )}
               {state.session.transcript?.text && (
                 <details className="mt-3 text-sm">
-                  <summary className="cursor-pointer text-slate-500">Full conversation transcript</summary>
-                  <p className="mt-2 whitespace-pre-line leading-relaxed text-slate-600">{state.session.transcript.text}</p>
+                  <summary className="cursor-pointer text-stone-500">Full conversation transcript</summary>
+                  <p className="mt-2 whitespace-pre-line leading-relaxed text-stone-600">{state.session.transcript.text}</p>
                 </details>
               )}
             </div>

@@ -1,5 +1,4 @@
 import { chatStructured } from '../llmClient'
-import { GRADING_TEMPERATURE } from '../models'
 import { JD_PARSE_CRITERIA } from '../../data/resumeCriteria'
 import type { ParsedJob } from '../../types'
 
@@ -15,7 +14,6 @@ export async function parseJobDescription(rawText: string, signal?: AbortSignal)
     user: `JOB DESCRIPTION:\n${rawText.trim()}`,
     schema: JD_PARSE_CRITERIA.schema,
     maxTokens: 1200,
-    temperature: GRADING_TEMPERATURE,
     signal,
   })
   return parsed

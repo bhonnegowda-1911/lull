@@ -110,7 +110,7 @@ export default function AnswerComposer({ onSubmit, disabled, placeholder }: Answ
   const busy = disabled || transcribing
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+    <div className="rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-3 shadow-sm">
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
@@ -118,7 +118,7 @@ export default function AnswerComposer({ onSubmit, disabled, placeholder }: Answ
         disabled={busy}
         rows={3}
         placeholder={placeholder || 'Type your answer, or use the mic…'}
-        className="w-full resize-y rounded-md border border-slate-200 p-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-indigo-400 focus:outline-none focus:ring-1 focus:ring-indigo-400 disabled:bg-slate-50"
+        className="w-full resize-y rounded-md border border-stone-200 p-2.5 text-sm text-stone-800 placeholder:text-stone-400 focus:border-terracotta-400 focus:outline-none focus:ring-1 focus:ring-terracotta-400 disabled:bg-stone-50"
       />
       {error && <p className="mt-1.5 text-xs text-red-600">{error}</p>}
       <div className="mt-2 flex items-center gap-2">
@@ -127,7 +127,7 @@ export default function AnswerComposer({ onSubmit, disabled, placeholder }: Answ
             type="button"
             onClick={startRecording}
             disabled={busy}
-            className="inline-flex items-center gap-1.5 rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 rounded-md border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
           >
             <span className="h-2 w-2 rounded-full bg-red-500" />
             {transcribing ? 'Transcribing…' : 'Hold the mic'}
@@ -136,7 +136,7 @@ export default function AnswerComposer({ onSubmit, disabled, placeholder }: Answ
           <button
             type="button"
             onClick={stopRecording}
-            className="inline-flex items-center gap-1.5 rounded-md bg-slate-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700"
+            className="inline-flex items-center gap-1.5 rounded-md bg-stone-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-stone-700"
           >
             <span className="h-2 w-2 bg-white" /> Stop & transcribe
           </button>
@@ -145,12 +145,12 @@ export default function AnswerComposer({ onSubmit, disabled, placeholder }: Answ
           type="button"
           onClick={handleSend}
           disabled={busy || !text.trim()}
-          className="ml-auto rounded-md bg-indigo-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+          className="ml-auto rounded-md bg-terracotta-600 px-4 py-1.5 text-sm font-medium text-white hover:bg-terracotta-500 disabled:opacity-50"
         >
           Send
         </button>
       </div>
-      <p className="mt-1 text-right text-[11px] text-slate-400">⌘/Ctrl + Enter to send</p>
+      <p className="mt-1 text-right text-[11px] text-stone-400">⌘/Ctrl + Enter to send</p>
     </div>
   )
 }

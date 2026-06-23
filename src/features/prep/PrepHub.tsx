@@ -22,35 +22,44 @@ const TABS: Array<{ id: Tab; label: string }> = [
 
 export default function PrepHub() {
   const [tab, setTab] = useState<Tab>('resume')
+  // Keep every tab we've opened MOUNTED (just hidden when inactive) so switching tabs never discards
+  // in-progress work — a running analysis keeps running and its results, drafts, and scroll survive.
+  // Tabs are rendered lazily on first visit so we don't pay to load all of them up front.
+  const [visited, setVisited] = useState<Set<Tab>>(() => new Set<Tab>(['resume']))
+
+  function go(id: Tab) {
+    setTab(id)
+    setVisited((v) => (v.has(id) ? v : new Set(v).add(id)))
+  }
 
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="text-base font-semibold text-slate-900">Prep</h2>
-        <p className="text-xs text-slate-500">
+        <h2 className="text-base font-semibold text-stone-900">Prep</h2>
+        <p className="text-xs text-stone-500">
           Build the ground truth your behavioral answers draw on: your resume, the projects behind it,
           and the stories you’ll tell.
         </p>
       </div>
 
-      <div className="inline-flex rounded-md border border-slate-200 p-0.5 text-sm">
+      <div className="inline-flex rounded-md border border-stone-200 p-0.5 text-sm">
         {TABS.map((t) => (
           <button
             key={t.id}
             type="button"
-            onClick={() => setTab(t.id)}
-            className={`rounded px-3 py-1 ${tab === t.id ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:text-slate-900'}`}
+            onClick={() => go(t.id)}
+            className={`rounded px-3 py-1 ${tab === t.id ? 'bg-terracotta-600 text-white' : 'text-stone-600 hover:text-stone-900'}`}
           >
             {t.label}
           </button>
         ))}
       </div>
 
-      {tab === 'resume' && <ResumeTab onBootstrapped={() => setTab('projects')} />}
-      {tab === 'projects' && <ProjectsTab />}
-      {tab === 'stories' && <StoryBank />}
-      {tab === 'jobs' && <JobsTab />}
-      {tab === 'match' && <MatchTab />}
+      {visited.has('resume') && <div className={tab === 'resume' ? '' : 'hidden'}><ResumeTab onBootstrapped={() => go('projects')} /></div>}
+      {visited.has('projects') && <div className={tab === 'projects' ? '' : 'hidden'}><ProjectsTab /></div>}
+      {visited.has('stories') && <div className={tab === 'stories' ? '' : 'hidden'}><StoryBank /></div>}
+      {visited.has('jobs') && <div className={tab === 'jobs' ? '' : 'hidden'}><JobsTab /></div>}
+      {visited.has('match') && <div className={tab === 'match' ? '' : 'hidden'}><MatchTab /></div>}
     </div>
   )
 }

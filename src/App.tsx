@@ -28,21 +28,23 @@ export default function App() {
   const openSettings = () => setSettingsOpen(true)
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+    <div className="min-h-screen bg-gradient-to-b from-[#f9f5ee] to-[#f1e8da] text-stone-800">
+      <header className="sticky top-0 z-10 border-b border-stone-200/70 bg-[#fbf8f1]/85 backdrop-blur">
+        <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-4 py-3">
           <div>
-            <h1 className="text-lg font-semibold text-slate-900">Interview Coach</h1>
-            <p className="text-xs text-slate-500">Practice interviews, review past sessions, and track progress.</p>
+            <h1 className="font-serif text-xl font-semibold tracking-tight text-stone-900">Interview Coach</h1>
+            <p className="text-xs text-stone-500">Practice interviews, review past sessions, and track progress.</p>
           </div>
           <div className="flex items-center gap-3">
-            <nav className="inline-flex rounded-md border border-slate-200 p-0.5 text-sm">
+            <nav className="inline-flex rounded-full border border-stone-200 bg-white/60 p-0.5 text-sm shadow-sm">
               {NAV.map((item) => (
                 <NavLink
                   key={item.to}
                   to={item.to}
                   className={({ isActive }) =>
-                    `rounded px-3 py-1 ${isActive ? 'bg-indigo-600 text-white' : 'text-slate-600 hover:text-slate-900'}`
+                    `rounded-full px-3 py-1 transition-colors ${
+                      isActive ? 'bg-[#b5552f] text-white shadow-sm' : 'text-stone-600 hover:text-stone-900'
+                    }`
                   }
                 >
                   {item.label}
@@ -50,18 +52,20 @@ export default function App() {
               ))}
             </nav>
             {online && !hasAllKeys && (
-              <span className="hidden text-xs text-amber-600 sm:inline">LLM not configured</span>
+              <span className="hidden text-xs text-amber-700 sm:inline">LLM not configured</span>
             )}
             {!online && <span className="hidden text-xs text-red-600 sm:inline">Backend offline</span>}
             <button
               type="button"
               onClick={openSettings}
-              className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="rounded-full border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-white"
             >
               Settings
             </button>
           </div>
         </div>
+        {/* Thin editorial rule under the header. */}
+        <div className="h-px bg-gradient-to-r from-amber-400/70 via-orange-300/40 to-transparent" />
       </header>
 
       <main className="mx-auto max-w-5xl px-4 py-6">

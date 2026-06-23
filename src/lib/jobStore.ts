@@ -1,4 +1,4 @@
-import type { JobDescription, ParsedJob } from '../types'
+import type { JobDescription, ParsedJob, ProblemPick, BehavioralPick } from '../types'
 
 // Client for the job-description store, backed by the server. Mirrors projectStore: reads return
 // []/null when the backend is unreachable; writes resolve to a boolean. Maps snake_case columns to
@@ -12,6 +12,8 @@ interface JobRow {
   company: string | null
   raw_text: string | null
   parsed: ParsedJob | Record<string, never> | null
+  problem_picks: ProblemPick[] | null
+  behavioral_picks: BehavioralPick[] | null
 }
 
 function fromRow(r: JobRow): JobDescription {
@@ -22,11 +24,13 @@ function fromRow(r: JobRow): JobDescription {
     company: r.company ?? '',
     rawText: r.raw_text ?? '',
     parsed,
+    problemPicks: r.problem_picks ?? [],
+    behavioralPicks: r.behavioral_picks ?? [],
   }
 }
 
 export function emptyJob(id: string): JobDescription {
-  return { id, title: '', company: '', rawText: '', parsed: null }
+  return { id, title: '', company: '', rawText: '', parsed: null, problemPicks: [], behavioralPicks: [] }
 }
 
 export async function listJobs(): Promise<JobDescription[]> {

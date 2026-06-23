@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import MicButton from '../../components/MicButton'
 import { FACETS, type FacetAnswer, type FacetId, type Project } from '../../data/projects'
 import FacetChat from './FacetChat'
 import { hydrateProjectDrafts } from '../../lib/projects/facetDraftStore'
@@ -23,6 +24,9 @@ export default function ProjectBuilder({
   const [roleRef, setRoleRef] = useState(initial.roleRef ?? '')
   const [summary, setSummary] = useState(initial.summary)
   const [facets, setFacets] = useState(initial.facets)
+  // Mic for the summary: disabled while a take is in flight, errors surfaced under the field.
+  const [summaryMicBusy, setSummaryMicBusy] = useState(false)
+  const [summaryError, setSummaryError] = useState<string | null>(null)
   // Pull any server-saved facet drafts into the local cache, then signal children to recheck.
   const [hydrated, setHydrated] = useState(false)
 
@@ -45,11 +49,11 @@ export default function ProjectBuilder({
     })
   }
 
-  const inputCls = 'w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none'
-  const labelCls = 'text-xs font-semibold uppercase tracking-wide text-slate-500'
+  const inputCls = 'w-full rounded-md border border-stone-300 px-3 py-1.5 text-sm focus:border-terracotta-500 focus:outline-none'
+  const labelCls = 'text-xs font-semibold uppercase tracking-wide text-stone-500'
 
   return (
-    <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="space-y-4 rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-5 shadow-sm">
       <div className="grid gap-3 sm:grid-cols-2">
         <div>
           <label className={labelCls}>Project title</label>
@@ -61,12 +65,39 @@ export default function ProjectBuilder({
         </div>
       </div>
       <div>
-        <label className={labelCls}>What was built</label>
-        <textarea className={`mt-1 ${inputCls}`} rows={2} value={summary} onChange={(e) => setSummary(e.target.value)} />
+        <div className="flex items-center justify-between gap-2">
+          <label className={labelCls}>What was built</label>
+          <MicButton
+            disabled={summaryMicBusy}
+            onBusyChange={setSummaryMicBusy}
+            onError={setSummaryError}
+            onTranscript={(text) => {
+              setSummaryError(null)
+              setSummary((prev) => (prev ? `${prev} ${text}` : text))
+            }}
+          />
+        </div>
+        <textarea
+          className={`mt-1 ${inputCls}`}
+          rows={2}
+          value={summary}
+          onChange={(e) => setSummary(e.target.value)}
+          disabled={summaryMicBusy}
+          placeholder="1–2 sentences: the system, your role, the scope, and the outcome that mattered."
+        />
+        <p className="mt-1 text-xs text-stone-500">
+          1–2 sentences of context — the coach uses this to interview you on the facets below, so keep
+          the STAR detail for them. Aim to cover:{' '}
+          <span className="font-medium text-stone-600">what the system is</span>,{' '}
+          <span className="font-medium text-stone-600">your role &amp; scope</span>,{' '}
+          <span className="font-medium text-stone-600">scale or stakes</span>, and{' '}
+          <span className="font-medium text-stone-600">the outcome that mattered</span>.
+        </p>
+        {summaryError && <p className="mt-1 text-xs text-red-600">{summaryError}</p>}
       </div>
 
-      <div className="space-y-4 border-t border-slate-100 pt-4">
-        <p className="text-xs text-slate-500">
+      <div className="space-y-4 border-t border-stone-100 pt-4">
+        <p className="text-xs text-stone-500">
           Capturing for a <span className="font-semibold capitalize">{targetLevel}</span> bar. Fill what you can — facets fill over time.
         </p>
         {FACETS.map((facet) => (
@@ -83,15 +114,15 @@ export default function ProjectBuilder({
         ))}
       </div>
 
-      <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
-        <button type="button" onClick={onCancel} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+      <div className="flex justify-end gap-2 border-t border-stone-100 pt-3">
+        <button type="button" onClick={onCancel} className="rounded-md border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50">
           Cancel
         </button>
         <button
           type="button"
           onClick={save}
           disabled={!title.trim()}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+          className="rounded-md bg-terracotta-600 px-4 py-2 text-sm font-medium text-white hover:bg-terracotta-500 disabled:opacity-50"
         >
           Save
         </button>

@@ -1,5 +1,5 @@
 import { chatStructured } from '../llmClient'
-import { DEFAULT_MODEL, GRADING_TEMPERATURE } from '../models'
+import { DEFAULT_MODEL } from '../models'
 import { STORY_THEMES, type StoryDraft } from '../../data/stories'
 import type { Transcript } from '../../types'
 
@@ -15,14 +15,15 @@ numbers, or outcomes. If a field wasn't covered, leave it empty/short rather tha
 Produce:
 - title: a short, memorable label for this story (e.g. "Cut billing latency 40%").
 - roleRef: the company/role/team if mentioned, else an empty string.
-- star: situation, task, a list of the key actions THEY took, and the result.
+- star: situation, task, a list of the key actions THEY took, the result, and a takeaway — the
+  one-line "so what" / lesson, if one is evident (else an empty string; never invent one).
 - impact: any concrete metrics they cited (verbatim figures), whether the work was theirs ("i"),
   shared ("we"), or mixed, and the blast radius (self/team/org) the story implies.
 - themes: which of the allowed categories this story can answer.
 - trueCeilingLevel: the seniority the WORK itself plausibly demonstrates judged by scope/ownership/
   impact; choose the lowest level the evidence supports rather than inflating.`
 
-const SCHEMA = {
+export const SCHEMA = {
   type: 'object',
   properties: {
     title: { type: 'string', description: 'Short memorable label for the story.' },
@@ -34,8 +35,9 @@ const SCHEMA = {
         task: { type: 'string' },
         actions: { type: 'array', items: { type: 'string' }, description: 'Key actions THEY took.' },
         result: { type: 'string' },
+        takeaway: { type: 'string', description: 'One-line "so what"/lesson if evident, else empty string.' },
       },
-      required: ['situation', 'task', 'actions', 'result'],
+      required: ['situation', 'task', 'actions', 'result', 'takeaway'],
       additionalProperties: false,
     },
     impact: {
@@ -85,7 +87,6 @@ export async function extractStory({
     user,
     schema: SCHEMA,
     maxTokens: 900,
-    temperature: GRADING_TEMPERATURE,
     signal,
   })
   return parsed

@@ -1,1 +1,19 @@
 @import "tailwindcss";
+
+/* Editorial accent: a muted terracotta ramp anchored on #b5552f (the header active
+   color). Reddish-brown — deliberately distinct from the yellow-orange `amber-*`
+   scale, which stays reserved for warning/draft/gap states so the two never collide.
+   Defining it here lets every `*-terracotta-NNN` utility (bg/text/border/ring/from/…)
+   work just like a built-in Tailwind palette. */
+@theme {
+  --color-terracotta-50: #fcf5f0;
+  --color-terracotta-100: #f8e7dc;
+  --color-terracotta-200: #f0cab4;
+  --color-terracotta-300: #e5a883;
+  --color-terracotta-400: #d88157;
+  --color-terracotta-500: #c66337;
+  --color-terracotta-600: #b5552f;
+  --color-terracotta-700: #964226;
+  --color-terracotta-800: #793724;
+  --color-terracotta-900: #642f20;
+}

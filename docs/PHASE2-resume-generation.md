@@ -1,6 +1,7 @@
-# Phase 2 — JD-targeted resume generation (TODO)
+# Phase 2 — JD-targeted resume generation
 
-**Status:** planned, not started.
+**Status:** SHIPPED 2026-06-22. Generate from the Match tab; bullets carry provenance; "Score this
+draft" closes the loop against the Phase-1 fit score.
 **Depends on:** Phase 1 (shipped) — JD parse + storage (`job_descriptions`, `jobs` module),
 resume↔JD fit (`RESUME_FIT_CRITERIA`, `lib/resume/fit.ts`, the **Match** tab).
 **Last updated:** 2026-06-21.
@@ -81,14 +82,17 @@ Enable the existing **"Generate tailored resume"** placeholder button:
 
 ## TODO checklist
 
-- [ ] Add `GeneratedResume` / `ResumeBullet` / `ResumeExperience` types to `src/types.ts`.
-- [ ] Add `RESUME_GEN_CRITERIA` (schema + grounding system prompt) to `src/data/resumeCriteria.ts`.
-- [ ] Implement `src/lib/resume/generate.ts` (`generateResume`), serializing stories + project facets as source.
-- [ ] Persist drafts via `sessionStore` (`kind='resume_gen'`); add a small list/compare view.
-- [ ] Wire the **MatchTab** button: generate → render with provenance → **Score this draft** (fit delta).
-- [ ] Add plain-text / markdown export of a generated resume.
-- [ ] Unit test the (pure) source-serialization + provenance mapping.
-- [ ] Verify end-to-end: a tailored draft scores higher against the JD than the stored resume.
+- [x] Add `GeneratedResume` / `ResumeBullet` / `ResumeExperience` types to `src/types.ts`.
+- [x] Add `RESUME_GEN_CRITERIA` (schema + grounding system prompt) to `src/data/resumeCriteria.ts`.
+- [x] Implement `src/lib/resume/generate.ts` (`generateResume`), serializing stories + project facets as source.
+- [x] Persist drafts via `sessionStore` (`kind='resume_gen'`).
+- [x] Wire the **MatchTab** button: generate → render with provenance → **Score this draft** (fit delta).
+- [x] Add markdown export (copy) of a generated resume.
+- [x] Unit test the (pure) source-serialization + provenance mapping (`src/test/resumeGen.test.ts`).
+- [ ] **Still manual:** verify end-to-end that a tailored draft scores higher than the stored resume
+  (needs the backend + a populated story bank — run it once real data exists).
+- [ ] **Deferred:** a list/compare view over saved `resume_gen` sessions (drafts are persisted, but
+  there's no history UI yet — generation renders only the latest draft in-session).
 
 ## Out of scope for Phase 2
 

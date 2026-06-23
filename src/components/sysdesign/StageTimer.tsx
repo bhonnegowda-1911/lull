@@ -46,7 +46,7 @@ export default function StageTimer({ budgetMin, onStatus }: StageTimerProps) {
   }, [status, onStatus])
 
   const color =
-    status === 'way_over' ? 'text-red-600' : status === 'over' ? 'text-amber-600' : 'text-slate-400'
+    status === 'way_over' ? 'text-red-600' : status === 'over' ? 'text-amber-600' : 'text-stone-400'
 
   return (
     <span className={`font-mono text-xs ${color}`} title="Time on this stage vs. its budget">

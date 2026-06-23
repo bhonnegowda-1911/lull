@@ -1,18 +1,12 @@
-// Central model selection. Change these in one place rather than per call site.
+// Central model selection. Per directive, the ENTIRE service runs on Claude Opus 4.8 — the most
+// capable model — with NO Sonnet and NO Haiku anywhere. The named constants are kept so call sites
+// still read intently (DEFAULT for turns/grading, REPORT for final reports, FAST for mechanical
+// extraction, RESUME for resume work), but they all resolve to Opus 4.8 now.
 //
-// DEFAULT_MODEL — Sonnet 4.6: best balance of speed and intelligence. Used for the
-//   behavioral grading, follow-up generation, and the system-design interviewer turns.
-//   Accepts `temperature` (we pass 0 for run-to-run consistency).
-// REPORT_MODEL — Opus 4.8: most capable. Used for the final system-design leveling report,
-//   where judgment quality matters most. NOTE: Opus 4.8 rejects `temperature`, so report
-//   calls must omit it (the llm client only sends `temperature` when given a number).
-
-export const DEFAULT_MODEL = 'claude-sonnet-4-6'
+// IMPORTANT: Opus 4.8 REJECTS the `temperature` parameter (HTTP 400). No call site may pass
+// `temperature` — every call omits it (the llm client only forwards `temperature` when given a
+// number, so leaving it unset is the enforcement). Adaptive thinking is the quality lever instead.
+export const DEFAULT_MODEL = 'claude-opus-4-8'
 export const REPORT_MODEL = 'claude-opus-4-8'
-// FAST_MODEL — Haiku 4.5: cheapest/fastest. Used for mechanical extraction (e.g. parsing a job
-// description into structure) where throughput matters more than deep judgment. Accepts temperature.
-export const FAST_MODEL = 'claude-haiku-4-5'
-
-// Grading wants deterministic output; pass this as `temperature` to Sonnet/Haiku calls.
-// Do NOT pass any temperature to Opus 4.8 (it 400s).
-export const GRADING_TEMPERATURE = 0
+export const FAST_MODEL = 'claude-opus-4-8'
+export const RESUME_MODEL = 'claude-opus-4-8'

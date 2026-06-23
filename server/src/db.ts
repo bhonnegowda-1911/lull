@@ -106,6 +106,11 @@ CREATE TABLE IF NOT EXISTS job_descriptions (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS jobs_updated_idx ON job_descriptions (updated_at DESC);
+
+-- Canonical system-design problems this JD points to (ranked picks referencing the curated library).
+ALTER TABLE job_descriptions ADD COLUMN IF NOT EXISTS problem_picks jsonb NOT NULL DEFAULT '[]';
+-- Behavioral/managerial questions this JD points to (ranked picks referencing the curated bank).
+ALTER TABLE job_descriptions ADD COLUMN IF NOT EXISTS behavioral_picks jsonb NOT NULL DEFAULT '[]';
 `
 
 /** Create tables if they don't exist. No migration tool yet — additive DDL only. */

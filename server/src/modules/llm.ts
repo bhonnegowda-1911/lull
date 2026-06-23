@@ -23,6 +23,42 @@ export function providerStatus() {
   return { anthropic: Boolean(ANTHROPIC_KEY), openai: Boolean(OPENAI_KEY) }
 }
 
+// Transient upstream failures we ride out with backoff rather than surfacing to the user. 529 is
+// Anthropic's "Overloaded"; 5xx and 429 are momentary saturation/rate. The request itself is fine.
+const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 529])
+const MAX_RETRIES = 3
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+
+/** POST to Anthropic, retrying transient errors with exponential backoff + jitter (honoring
+ *  Retry-After when given). Returns the final Response; the caller handles non-ok statuses. */
+async function postAnthropicWithRetry(body: unknown): Promise<Response> {
+  for (let attempt = 0; ; attempt++) {
+    let upstream: Response | null = null
+    try {
+      upstream = await fetch(ANTHROPIC_URL, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          'x-api-key': ANTHROPIC_KEY,
+          'anthropic-version': ANTHROPIC_VERSION,
+        },
+        body: JSON.stringify(body),
+      })
+    } catch (e) {
+      if (attempt >= MAX_RETRIES) throw e // network error, out of retries
+    }
+    if (upstream && (upstream.ok || !RETRYABLE_STATUS.has(upstream.status) || attempt >= MAX_RETRIES)) {
+      return upstream
+    }
+    const retryAfter = upstream ? Number(upstream.headers.get('retry-after')) : NaN
+    upstream?.body?.cancel().catch(() => {}) // free the connection before retrying
+    const backoff = 600 * 2 ** attempt + Math.floor(Math.random() * 300)
+    const waitMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : backoff
+    console.warn(`[llm] transient upstream ${upstream?.status ?? 'network'}; retrying in ${waitMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`)
+    await sleep(waitMs)
+  }
+}
+
 interface ChatBody {
   provider?: string
   model: string
@@ -57,15 +93,7 @@ llm.post('/chat', async (req, res) => {
 
   let upstream: Response
   try {
-    upstream = await fetch(ANTHROPIC_URL, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'x-api-key': ANTHROPIC_KEY,
-        'anthropic-version': ANTHROPIC_VERSION,
-      },
-      body: JSON.stringify(body),
-    })
+    upstream = await postAnthropicWithRetry(body)
   } catch {
     return res.status(502).json({ error: 'Network error reaching Anthropic.' })
   }
@@ -77,6 +105,12 @@ llm.post('/chat', async (req, res) => {
       detail = err?.error?.message ? `: ${err.error.message}` : ''
     } catch {
       /* ignore */
+    }
+    // Still overloaded/saturated after retries — tell the user it's transient and to retry.
+    if (RETRYABLE_STATUS.has(upstream.status)) {
+      return res
+        .status(upstream.status)
+        .json({ error: `Anthropic is temporarily overloaded (${upstream.status})${detail}. Please try again in a moment.` })
     }
     return res.status(upstream.status).json({ error: `Analysis failed (${upstream.status})${detail}.` })
   }

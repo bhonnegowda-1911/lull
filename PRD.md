@@ -123,11 +123,20 @@ defend is one I should revisit.*
 1. **Trend tracking** — make improvement visible. Highest leverage; unlocks the
    north star. **(P0)**
 2. Auto-derived focus targets from history. **(P1)**
-3. **JD-targeted resume generation (Phase 2)** — grounded in my projects/stories, fed back
-   through the resume↔JD fit score. See [`docs/PHASE2-resume-generation.md`](docs/PHASE2-resume-generation.md). **(P1)**
+3. **Compare/history view for generated resumes** — drafts persist as `resume_gen` sessions, but
+   there's no UI to list/diff versions yet. **(P2)**
 
-*Done since last revision: server LLM gateway (keys server-side); conversational STAR facet
-capture for projects, with drafts durable to Postgres; resume↔JD fit analysis (Jobs + Match).*
+*Done since last revision: conversational STAR **story** builder (coach-guided, voice-enabled),
+with the takeaway/"so what" added to the story model; **JD-targeted resume generation (Phase 2)** —
+grounded in stories/projects, with per-bullet provenance and a fit-delta loop (see
+[`docs/PHASE2-resume-generation.md`](docs/PHASE2-resume-generation.md)); voice input across project
+and story capture; **JD-driven interview loop** — from a target job, predict and rank the likely
+**system-design problems** and **behavioral/managerial questions**, each with a domain/value
+rationale and a one-click **Practice →** into the real round. Both selectors choose only from the
+curated catalogs (problem library expanded to ~32 canonical problems; behavioral bank gained a
+"Startup fit & values" set), so grading stays anchored — the LLM matches and explains, it never
+invents the question or the answer key. Also: LLM gateway now **retries transient overloads**
+(429/5xx/529) with backoff, and Prep tabs keep in-progress work alive across tab switches.*
 
 ---
 

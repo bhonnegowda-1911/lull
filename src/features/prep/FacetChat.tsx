@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import MicButton from '../../components/MicButton'
 import { facetPrompt, type FacetAnswer, type FacetDef } from '../../data/projects'
 import { facetTurn, type FacetBeats, type FacetMessage } from '../../lib/projects/facetChat'
 import { clearFacetDraft, loadFacetDraft, saveFacetDraft } from '../../lib/projects/facetDraftStore'
@@ -26,7 +27,7 @@ function StarMeter({ filled }: { filled: boolean[] }) {
         <span
           key={label}
           className={`flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-bold ${
-            filled[i] ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-400'
+            filled[i] ? 'bg-emerald-500 text-white' : 'bg-stone-200 text-stone-400'
           }`}
         >
           {label}
@@ -61,6 +62,8 @@ export default function FacetChat({
   const [draft, setDraft] = useState<FacetAnswer | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // True while the mic is recording or transcribing — disables Send/typing until the text lands.
+  const [micBusy, setMicBusy] = useState(false)
   // Does a saved in-progress conversation exist? Tracked so the collapsed view can offer "Resume".
   const [hasDraft, setHasDraft] = useState(() => loadFacetDraft(projectId, facet.id) !== null)
 
@@ -143,8 +146,8 @@ export default function FacetChat({
     setOpen(false)
   }
 
-  const inputCls = 'w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none'
-  const labelCls = 'text-xs font-semibold uppercase tracking-wide text-slate-500'
+  const inputCls = 'w-full rounded-md border border-stone-300 px-3 py-1.5 text-sm focus:border-terracotta-500 focus:outline-none'
+  const labelCls = 'text-xs font-semibold uppercase tracking-wide text-stone-500'
 
   return (
     <div>
@@ -159,7 +162,7 @@ export default function FacetChat({
             <button
               type="button"
               onClick={openChat}
-              className="rounded px-2 py-0.5 text-xs font-medium text-indigo-600 hover:bg-indigo-50"
+              className="rounded px-2 py-0.5 text-xs font-medium text-terracotta-600 hover:bg-terracotta-50"
             >
               {hasDraft ? 'Resume draft' : hasAnswer ? 'Refine with coach' : 'Build with coach'}
             </button>
@@ -168,26 +171,26 @@ export default function FacetChat({
       </div>
 
       {!open && (
-        <p className={`mt-1 text-sm ${hasAnswer ? 'text-slate-600' : 'text-slate-400'}`}>
+        <p className={`mt-1 text-sm ${hasAnswer ? 'text-stone-600' : 'text-stone-400'}`}>
           {hasAnswer ? value.text : hasDraft ? 'Draft in progress — resume to finish.' : facet.helper}
         </p>
       )}
 
       {open && (
-        <div className="mt-2 space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3">
+        <div className="mt-2 space-y-2 rounded-md border border-stone-200 bg-stone-50 p-3">
           <div className="space-y-2">
             {messages.map((m, i) => (
               <div key={i} className={m.role === 'coach' ? '' : 'flex justify-end'}>
                 <span
                   className={`inline-block max-w-[85%] rounded-lg px-3 py-1.5 text-sm ${
-                    m.role === 'coach' ? 'bg-white text-slate-700 ring-1 ring-slate-200' : 'bg-indigo-600 text-white'
+                    m.role === 'coach' ? 'bg-white text-stone-700 ring-1 ring-stone-200' : 'bg-terracotta-600 text-white'
                   }`}
                 >
                   {m.text}
                 </span>
               </div>
             ))}
-            {loading && <p className="text-xs text-slate-400">Coach is thinking…</p>}
+            {loading && <p className="text-xs text-stone-400">Coach is thinking…</p>}
           </div>
 
           {error && <p className="text-xs text-red-600">{error}</p>}
@@ -195,7 +198,7 @@ export default function FacetChat({
           {draft ? (
             <div className="space-y-2 rounded-md border border-emerald-200 bg-emerald-50 p-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Suggested STAR answer</p>
-              <p className="text-sm text-slate-700">{draft.text}</p>
+              <p className="text-sm text-stone-700">{draft.text}</p>
               <div className="flex gap-2">
                 <button
                   type="button"
@@ -207,7 +210,7 @@ export default function FacetChat({
                 <button
                   type="button"
                   onClick={() => setDraft(null)}
-                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-white"
+                  className="rounded-md border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-white"
                 >
                   Keep refining
                 </button>
@@ -215,6 +218,12 @@ export default function FacetChat({
             </div>
           ) : (
             <div className="flex gap-2">
+              <MicButton
+                disabled={loading}
+                onBusyChange={setMicBusy}
+                onError={setError}
+                onTranscript={(text) => setInput((prev) => (prev ? `${prev} ${text}` : text))}
+              />
               <input
                 className={inputCls}
                 value={input}
@@ -225,14 +234,14 @@ export default function FacetChat({
                     void send()
                   }
                 }}
-                placeholder="Answer the coach…"
-                disabled={loading}
+                placeholder={micBusy ? 'Listening…' : 'Answer the coach, or use the mic…'}
+                disabled={loading || micBusy}
               />
               <button
                 type="button"
                 onClick={() => void send()}
-                disabled={loading || !input.trim()}
-                className="shrink-0 rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+                disabled={loading || micBusy || !input.trim()}
+                className="shrink-0 rounded-md bg-terracotta-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-terracotta-500 disabled:opacity-50"
               >
                 Send
               </button>
@@ -240,10 +249,10 @@ export default function FacetChat({
           )}
 
           <div className="flex justify-between">
-            <button type="button" onClick={discard} className="text-xs text-slate-400 hover:text-red-600">
+            <button type="button" onClick={discard} className="text-xs text-stone-400 hover:text-red-600">
               Discard draft
             </button>
-            <button type="button" onClick={() => setOpen(false)} className="text-xs text-slate-500 hover:text-slate-700">
+            <button type="button" onClick={() => setOpen(false)} className="text-xs text-stone-500 hover:text-stone-700">
               Close (keeps draft)
             </button>
           </div>

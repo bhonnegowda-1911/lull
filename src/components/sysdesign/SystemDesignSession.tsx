@@ -154,6 +154,15 @@ export default function SystemDesignSession({ onNeedKeys }: { onNeedKeys?: () =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resume?.id])
 
+  // Start a fresh interview for a problem chosen from a target job's plan (Prep → Match → Practice).
+  const startProblemId = (location.state as { startProblemId?: string } | null)?.startProblemId
+  useEffect(() => {
+    if (!startProblemId) return
+    dispatch({ type: 'START', problemId: startProblemId })
+    window.history.replaceState({}, '')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startProblemId])
+
   // Mirror to localStorage (instant cache) on every change; RESET (→ 'pick') clears it.
   useEffect(() => persistSession(state), [state])
 
@@ -280,9 +289,9 @@ export default function SystemDesignSession({ onNeedKeys }: { onNeedKeys?: () =>
   if (state.phase === 'report' && problem) {
     return (
       <div className="space-y-5">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="text-xs uppercase tracking-wide text-slate-400">Interview report</div>
-          <div className="text-base font-semibold text-slate-900">{problem.title}</div>
+        <div className="rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-4 shadow-sm">
+          <div className="text-xs uppercase tracking-wide text-stone-400">Interview report</div>
+          <div className="text-base font-semibold text-stone-900">{problem.title}</div>
         </div>
         <Attachments ids={state.attachments || []} />
         <SysDesignReport report={state.report} onRestart={handleReset} />
@@ -295,26 +304,26 @@ export default function SystemDesignSession({ onNeedKeys }: { onNeedKeys?: () =>
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_260px]">
       <div className="space-y-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-xs uppercase tracking-wide text-slate-400">Problem</div>
-              <div className="text-sm font-semibold text-slate-900">{problem.title}</div>
+              <div className="text-xs uppercase tracking-wide text-stone-400">Problem</div>
+              <div className="text-sm font-semibold text-stone-900">{problem.title}</div>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1">
               <button
                 type="button"
                 onClick={handleReset}
-                className="rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                className="rounded-md border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 hover:bg-stone-50"
               >
                 End interview
               </button>
-              <span className="text-[11px] text-slate-400" title="Saved on this device and to the backend — resumes after a reload or cache clear.">
+              <span className="text-[11px] text-stone-400" title="Saved on this device and to the backend — resumes after a reload or cache clear.">
                 ✓ Progress saved
               </span>
             </div>
           </div>
-          <p className="mt-2 text-sm text-slate-600">{problem.statement}</p>
+          <p className="mt-2 text-sm text-stone-600">{problem.statement}</p>
 
           <AttachmentBar ids={state.attachments || []} onAttach={handleAttach} />
         </div>
@@ -324,9 +333,9 @@ export default function SystemDesignSession({ onNeedKeys }: { onNeedKeys?: () =>
         )}
 
         {state.phase === 'reporting' ? (
-          <div className="rounded-xl border border-slate-200 bg-white p-8 text-center shadow-sm">
-            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600" />
-            <p className="mt-3 text-sm text-slate-600">Grading the full interview…</p>
+          <div className="rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-8 text-center shadow-sm">
+            <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-stone-200 border-t-terracotta-600" />
+            <p className="mt-3 text-sm text-stone-600">Grading the full interview…</p>
           </div>
         ) : (
           <StageConversation
@@ -356,7 +365,7 @@ function Attachments({ ids }: { ids: string[] }) {
     <div className="flex flex-wrap gap-2">
       {ids.map((id) => (
         <a key={id} href={assetUrl(id)} target="_blank" rel="noreferrer" className="block">
-          <img src={assetUrl(id)} alt="attachment" className="h-20 w-20 rounded-md border border-slate-200 object-cover" />
+          <img src={assetUrl(id)} alt="attachment" className="h-20 w-20 rounded-md border border-stone-200 object-cover" />
         </a>
       ))}
     </div>
@@ -366,10 +375,10 @@ function Attachments({ ids }: { ids: string[] }) {
 // Upload control + thumbnails shown during the interview.
 function AttachmentBar({ ids, onAttach }: { ids: string[]; onAttach: (file: File) => void }) {
   return (
-    <div className="mt-3 border-t border-slate-100 pt-3">
+    <div className="mt-3 border-t border-stone-100 pt-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-slate-500">Diagrams / attachments</span>
-        <label className="cursor-pointer rounded-md border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50">
+        <span className="text-xs font-medium text-stone-500">Diagrams / attachments</span>
+        <label className="cursor-pointer rounded-md border border-stone-300 px-2.5 py-1 text-xs font-medium text-stone-600 hover:bg-stone-50">
           + Add image/video
           <input
             type="file"
@@ -387,7 +396,7 @@ function AttachmentBar({ ids, onAttach }: { ids: string[]; onAttach: (file: File
         <div className="mt-2 flex flex-wrap gap-2">
           {ids.map((id) => (
             <a key={id} href={assetUrl(id)} target="_blank" rel="noreferrer">
-              <img src={assetUrl(id)} alt="attachment" className="h-16 w-16 rounded-md border border-slate-200 object-cover" />
+              <img src={assetUrl(id)} alt="attachment" className="h-16 w-16 rounded-md border border-stone-200 object-cover" />
             </a>
           ))}
         </div>

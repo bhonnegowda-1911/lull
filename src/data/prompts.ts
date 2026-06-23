@@ -339,9 +339,86 @@ export const PROMPTS: Prompt[] = [
     trap: 'Either going around your manager, or never raising anything until it became a fire.',
     avoid: 'Framing it as outsmarting your manager; skip the org politics.',
   },
+
+  // Startup fit & values — the questions modern, fast-moving teams use to probe culture fit:
+  // bias to action, agency, building with AI, customer focus. The JD→behavioral selector reaches
+  // for these when a company states the matching value (e.g. "Ship, ship, ship" or "Build with AI").
+  {
+    id: 'values-project-enjoyed',
+    category: 'Startup fit & values',
+    label: 'A project you enjoyed working on',
+    text: 'Walk me through a project you really enjoyed working on. What was it, what did you do, and why did it energize you?',
+    assesses: 'What kind of work motivates you, and whether it matches what this role offers.',
+    tip: 'Pick a project with real substance and YOUR clear contribution; name specifically what energized you (the problem, the ownership, the impact) and tie it to this role.',
+    trap: 'Choosing a project where your role was peripheral, or gushing with no technical or decision detail.',
+    avoid: 'A laundry list of projects, or “I enjoy everything.”',
+  },
+  {
+    id: 'values-ai-assisted',
+    category: 'Startup fit & values',
+    label: 'Building with AI tools',
+    text: 'How do you use AI tools (Claude Code, Cursor, Copilot) in your engineering day-to-day, and where have they changed how you work?',
+    assesses: 'Whether you’ve genuinely adopted AI-assisted development and have judgment about where it helps vs. hurts.',
+    tip: 'Give concrete workflows (scaffolding, refactors, exploring an unfamiliar codebase, reviewing) and a specific example where it sped you up — plus where you don’t trust it and verify.',
+    trap: 'Either dismissiveness (“I don’t really use them”) at a company that ships with AI, or blind over-trust with no verification.',
+    avoid: 'Vague enthusiasm with no real workflow; claiming expertise you don’t have.',
+  },
+  {
+    id: 'values-open-source',
+    category: 'Startup fit & values',
+    label: 'Open-source / community contributions',
+    text: 'Tell me about any open-source contributions or technical communities you’ve been part of. What did you contribute, and why?',
+    assesses: 'Initiative beyond the day job, collaborating in public, and engineering taste.',
+    tip: 'Describe a concrete contribution (a PR, a library, docs, an issue you drove) and its impact; if you have little OSS, be honest and point to analogous public or internal work.',
+    trap: 'Claiming involvement you can’t back up, or dismissing it entirely when the JD explicitly values it.',
+    avoid: 'A list of starred repos; inflating a one-line PR into a major contribution.',
+  },
+  {
+    id: 'values-bias-to-action',
+    category: 'Startup fit & values',
+    label: 'Shipping fast vs. polishing',
+    text: 'Tell me about a time you shipped something imperfect quickly instead of polishing it. How did you decide, and how did it turn out?',
+    assesses: 'Bias for action and judgment about when “iteration beats perfection” is the right call.',
+    tip: 'Show the explicit tradeoff (what you cut, the risk you accepted) and how you closed the loop after — fast AND responsible, not reckless.',
+    trap: 'Sounding either like a perfectionist who can’t ship, or someone who ships carelessly with no quality bar.',
+    avoid: 'A case where shipping fast caused real harm you never addressed; “I always ship fast” with no judgment.',
+  },
+  {
+    id: 'values-high-agency',
+    category: 'Startup fit & values',
+    label: 'High agency / unblocking yourself',
+    text: 'Tell me about a time you figured out what needed to be built and drove it — not because you were told to, but because you saw it needed doing.',
+    assesses: 'Ownership of outcomes and the ability to unblock yourself in ambiguity.',
+    tip: 'Show you spotted the problem, took ownership without being asked, unblocked yourself, and drove it to a result — name the outcome.',
+    trap: 'Waiting to be assigned work, or “ownership” that was really just doing your assigned tasks.',
+    avoid: 'Going rogue with no alignment; claiming a team’s credit as your own.',
+  },
+  {
+    id: 'values-customer-trust',
+    category: 'Startup fit & values',
+    label: 'Building for real customer problems',
+    text: 'Tell me about a time you talked to customers or users to understand a problem, and how it changed what you built.',
+    assesses: 'Whether you build for real problems and earn trust, vs. building in a vacuum.',
+    tip: 'Show you sought the real need directly, how that evidence changed a concrete decision, and the outcome for the customer.',
+    trap: 'Building what you assumed was needed with no customer contact, or treating customer input as noise.',
+    avoid: 'Second-hand “a PM told me”; no link between the conversation and what you actually built.',
+  },
 ]
 
 export const DEFAULT_PROMPT = PROMPTS[0]
+
+// Compact catalog (id + label + question + category) the JD→behavioral SELECTOR ranks over. Like the
+// system-design selector, it only ever returns ids from this list — the company's values decide which
+// curated questions to prioritize, the LLM never invents a question or a grading key (STAR grading is
+// question-agnostic, so the bank stays the single source of truth).
+export function promptCatalog(): { id: string; label: string; text: string; category: string }[] {
+  return PROMPTS.map((p) => ({ id: p.id, label: p.label, text: p.text, category: p.category }))
+}
+
+/** Resolve a prompt by id for the JD behavioral plan; falls back to the default prompt. */
+export function getPrompt(id: string): Prompt {
+  return PROMPTS.find((p) => p.id === id) || DEFAULT_PROMPT
+}
 
 // Stable category order for grouping in the picker.
 export const PROMPT_CATEGORIES = PROMPTS.reduce<string[]>((acc, p) => {

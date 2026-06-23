@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { STAGES, getStage, stageIndex, nextStage, FIRST_STAGE, LEVELS } from '../data/sysdesign/stages'
-import { PROBLEMS, getProblem, DEFAULT_PROBLEM } from '../data/sysdesign/problems'
+import { PROBLEMS, getProblem, DEFAULT_PROBLEM, problemCatalog } from '../data/sysdesign/problems'
 import { candidateDecisions, type Turn } from '../lib/sysdesign/conversation'
 import { reviveSession, sanitize, type SessionState } from '../lib/sysdesign/persistence'
 
@@ -54,6 +54,21 @@ describe('system-design problems', () => {
 
   it('falls back to the default problem for unknown ids', () => {
     expect(getProblem('nope').id).toBe(DEFAULT_PROBLEM.id)
+  })
+
+  it('exposes a selector catalog whose ids all resolve back to real library problems', () => {
+    const catalog = problemCatalog()
+    expect(catalog.length).toBe(PROBLEMS.length)
+    for (const c of catalog) {
+      expect(c.id).toBeTruthy()
+      expect(c.statement).toBeTruthy()
+      // The JD selector only returns catalog ids; each must resolve to that exact problem.
+      expect(getProblem(c.id).id).toBe(c.id)
+    }
+  })
+
+  it('includes the code-execution problem the selector needs for untrusted-execution domains', () => {
+    expect(PROBLEMS.some((p) => p.id === 'code-execution')).toBe(true)
   })
 })
 

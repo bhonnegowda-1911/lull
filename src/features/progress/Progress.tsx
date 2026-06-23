@@ -20,7 +20,7 @@ const KIND_LABEL: Record<string, string> = { behavioral: 'Behavioral', sysdesign
 function arrow(dir: Direction): { glyph: string; cls: string; label: string } {
   if (dir === 'up') return { glyph: '↑', cls: 'text-emerald-400', label: 'improving' }
   if (dir === 'down') return { glyph: '↓', cls: 'text-rose-400', label: 'slipping' }
-  return { glyph: '→', cls: 'text-slate-500', label: 'flat' }
+  return { glyph: '→', cls: 'text-stone-500', label: 'flat' }
 }
 
 function Trend({ glyph, cls, label }: ReturnType<typeof arrow>) {
@@ -46,7 +46,7 @@ function Metric({
   points: Point[]
   min: number
   max: number
-  color: 'indigo' | 'emerald' | 'rose' | 'violet'
+  color: 'terracotta' | 'emerald' | 'rose' | 'violet'
   lowerIsBetter?: boolean
   format: (v: number) => string
 }) {
@@ -54,13 +54,13 @@ function Metric({
   return (
     <div className="rounded-lg border border-white/10 bg-white/5 p-3">
       <div className="flex items-baseline justify-between">
-        <h4 className="text-xs font-medium text-slate-400">{title}</h4>
-        {latest != null && <span className="text-sm font-semibold text-slate-100">{format(latest)}</span>}
+        <h4 className="text-xs font-medium text-stone-400">{title}</h4>
+        {latest != null && <span className="text-sm font-semibold text-stone-100">{format(latest)}</span>}
       </div>
       <div className="mt-2">
         <Sparkline points={points} min={min} max={max} color={color} />
       </div>
-      <div className="mt-1 flex items-center justify-between text-[11px] text-slate-500">
+      <div className="mt-1 flex items-center justify-between text-[11px] text-stone-500">
         <span>{points.length} rep{points.length === 1 ? '' : 's'}</span>
         <Trend {...arrow(trendDirection(points, lowerIsBetter))} />
       </div>
@@ -72,14 +72,14 @@ function Metric({
 // are themed off the tier so gold *looks* gold and diamond shimmers cool.
 const TIER_GRADIENT: Record<string, string> = {
   Bronze: 'from-amber-500 to-amber-800',
-  Silver: 'from-slate-200 to-slate-500',
+  Silver: 'from-stone-200 to-stone-500',
   Gold: 'from-yellow-300 to-amber-600',
   Platinum: 'from-cyan-200 to-cyan-500',
-  Diamond: 'from-indigo-300 via-sky-300 to-violet-500',
+  Diamond: 'from-terracotta-300 via-sky-300 to-violet-500',
 }
 const TIER_GLOW: Record<string, string> = {
   Bronze: 'ring-amber-500/40',
-  Silver: 'ring-slate-300/40',
+  Silver: 'ring-stone-300/40',
   Gold: 'ring-amber-400/50',
   Platinum: 'ring-cyan-300/50',
   Diamond: 'ring-violet-400/50',
@@ -114,14 +114,14 @@ function GameHeader({ game }: { game: GameStat }) {
   useEffect(() => setFilled(true), [])
   const into = useCountUp(game.into)
   const move = rankMovement(game.rankDir)
-  const gradient = TIER_GRADIENT[game.rank.tier] ?? 'from-slate-400 to-slate-600'
+  const gradient = TIER_GRADIENT[game.rank.tier] ?? 'from-stone-400 to-stone-600'
   const glow = TIER_GLOW[game.rank.tier] ?? 'ring-white/30'
 
   return (
-    <div className="mt-3 flex items-center gap-4 rounded-xl bg-gradient-to-br from-slate-800 to-slate-700/90 p-4 text-white shadow-md ring-1 ring-white/10">
+    <div className="mt-3 flex items-center gap-4 rounded-xl bg-gradient-to-br from-stone-800 to-stone-700/90 p-4 text-white shadow-md ring-1 ring-white/10">
       {/* Level crest */}
-      <div className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 shadow-[0_0_22px_-6px_rgba(99,102,241,0.9)] ring-2 ring-white/20">
-        <span className="text-[10px] font-semibold uppercase tracking-wider text-indigo-100">Lv</span>
+      <div className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-gradient-to-br from-terracotta-500 to-violet-600 shadow-[0_0_22px_-6px_rgba(99,102,241,0.9)] ring-2 ring-white/20">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-terracotta-100">Lv</span>
         <span className="-mt-1 text-2xl font-bold leading-none">{game.level}</span>
       </div>
 
@@ -130,7 +130,7 @@ function GameHeader({ game }: { game: GameStat }) {
           <div className="flex items-center gap-2.5">
             {/* Tier medallion — division inside, tier conveyed by the metallic color */}
             <div
-              className={`grid h-11 w-11 shrink-0 place-items-center rounded-full bg-gradient-to-br ${gradient} text-slate-900 shadow ring-2 ${glow} ${
+              className={`grid h-11 w-11 shrink-0 place-items-center rounded-full bg-gradient-to-br ${gradient} text-stone-900 shadow ring-2 ${glow} ${
                 game.rankDir !== 'flat' ? 'animate-pulse' : ''
               }`}
             >
@@ -149,7 +149,7 @@ function GameHeader({ game }: { game: GameStat }) {
         {/* XP bar — fills on mount via a Tailwind width transition */}
         <div className="mt-2.5 h-2.5 w-full overflow-hidden rounded-full bg-white/10">
           <div
-            className="h-full rounded-full bg-gradient-to-r from-indigo-400 to-violet-400 shadow-[0_0_8px_rgba(129,140,248,0.7)] transition-[width] duration-700 ease-out"
+            className="h-full rounded-full bg-gradient-to-r from-terracotta-400 to-violet-400 shadow-[0_0_8px_rgba(129,140,248,0.7)] transition-[width] duration-700 ease-out"
             style={{ width: `${filled ? Math.round(game.progress * 100) : 0}%` }}
           />
         </div>
@@ -169,10 +169,10 @@ function ModeCard({ trend }: { trend: ModeTrend }) {
   const game = summarizeGame(trend.score)
 
   return (
-    <div className="rounded-xl bg-slate-900 p-5 shadow-sm ring-1 ring-white/10">
+    <div className="rounded-xl bg-stone-900 p-5 shadow-sm ring-1 ring-white/10">
       <div className="flex items-center justify-between">
         <h3 className="text-base font-semibold text-white">{KIND_LABEL[trend.kind] ?? trend.kind}</h3>
-        <span className="text-xs text-slate-400">{trend.count} completed</span>
+        <span className="text-xs text-stone-400">{trend.count} completed</span>
       </div>
 
       {game && <GameHeader game={game} />}
@@ -183,7 +183,7 @@ function ModeCard({ trend }: { trend: ModeTrend }) {
           points={levels}
           min={1}
           max={MAX_LEVEL}
-          color="indigo"
+          color="terracotta"
           format={(v) => ordinalLabel(v)}
         />
         {trend.fillerPerMin && (
@@ -232,21 +232,21 @@ export default function Progress() {
 
   // The whole tab is a dark "arcade" surface so the rank panels and tier colors read as a game.
   const Shell = ({ children }: { children: React.ReactNode }) => (
-    <div className="rounded-2xl bg-gradient-to-b from-slate-950 to-slate-900 p-5 ring-1 ring-white/10">
+    <div className="rounded-2xl bg-gradient-to-b from-stone-950 to-stone-900 p-5 ring-1 ring-white/10">
       <div className="mb-4">
         <h2 className="text-lg font-semibold text-white">Your progress</h2>
-        <p className="text-xs text-slate-400">Are you improving over reps? Level up across your completed sessions.</p>
+        <p className="text-xs text-stone-400">Are you improving over reps? Level up across your completed sessions.</p>
       </div>
       {children}
     </div>
   )
 
-  if (loading) return <Shell><p className="text-sm text-slate-400">Loading…</p></Shell>
+  if (loading) return <Shell><p className="text-sm text-stone-400">Loading…</p></Shell>
 
   if (trends.length === 0) {
     return (
       <Shell>
-        <p className="text-sm text-slate-400">
+        <p className="text-sm text-stone-400">
           No completed sessions yet. Finish a few behavioral, system-design, or build sessions and
           your level and delivery trends will chart here. (Needs the backend running for durable
           history — see the README.)

@@ -450,10 +450,679 @@ export const PROBLEMS: Problem[] = [
       ],
     },
   },
+  {
+    id: 'code-execution',
+    title: 'Design an online code-execution service (LeetCode-style judge)',
+    difficulty: 'Hard',
+    statement:
+      'Design a service that runs untrusted, user-submitted code against test cases (like LeetCode or a coding-interview judge): accept code + language, compile/run it in isolation with CPU, memory and wall-clock limits and no network, return pass/fail plus output/diagnostics, at multi-tenant scale.',
+    hints: {
+      functionalReqs: [
+        'Submit code (language + source + problem/test-case ref) → get a verdict (accepted / wrong answer / TLE / MLE / runtime error / compile error)',
+        'Run against many hidden test cases; report per-case result, runtime, and memory',
+        'Support multiple languages; surface compiler/stderr output to the user',
+      ],
+      nonFunctionalReqs: [
+        'ISOLATION is the whole problem — untrusted code must not escape the sandbox or reach the network/other tenants',
+        'Hard resource limits per run: CPU time, wall-clock (timeout), memory, processes/threads, output size',
+        'Multi-tenant fairness: one user (or a fork bomb) cannot starve others; bound concurrency',
+        'Low queueing latency under bursty load (contests); deterministic, reproducible runs',
+      ],
+      coreEntities: ['User/Submission', 'Problem + TestCases', 'Language/Runtime image', 'Execution Job', 'Worker/Sandbox', 'Verdict/Result'],
+      api: [
+        'POST /submissions (language, source, problemId, idempotency key) → 202 + submissionId',
+        'GET /submissions/{id} → status + per-test verdicts; SSE/WebSocket for live progress',
+        'Internal: dispatch job → sandboxed worker; results written back to the submission',
+      ],
+      deepDives: [
+        'Sandboxing: container vs microVM (gVisor / Firecracker / nsjail), seccomp/cgroups, read-only ephemeral FS, drop network, non-root, kill on limit breach',
+        'Worker pool + queue: warm pools per language to hide cold start, autoscale on queue depth, bound per-tenant concurrency for fairness',
+        'Resource enforcement: cgroups for CPU/mem, a hard wall-clock timeout (TLE), output truncation; reproducible time/memory measurement',
+        'Contest spikes: backpressure, priority/fair queues, graceful 429s; idempotent submission so a retry doesn’t double-run',
+        'Result correctness: hidden test cases storage, exact/float/whitespace comparison, special judges/checkers',
+      ],
+      traps: [
+        'Hand-waving isolation ("just run it in Docker") — no story for sandbox escape, syscalls, or the network',
+        'Ignoring the noisy-neighbor / fork-bomb / infinite-loop (TLE) and memory-exhaustion (MLE) vectors',
+        'Treating it as a synchronous request instead of a durable, bounded async job',
+        'No cold-start story for per-language runtimes under contest load',
+      ],
+    },
+  },
+  {
+    id: 'webhook-delivery',
+    title: 'Design a reliable webhook delivery system',
+    difficulty: 'Core',
+    statement:
+      'Design a system that delivers event notifications (webhooks) to thousands of customer-registered HTTP endpoints. Endpoints are often flaky or slow; delivery must be reliable, retried with backoff, ordered where required, and observable — without one bad consumer degrading everyone else.',
+    hints: {
+      functionalReqs: [
+        'Register/manage endpoints (URL, secret, subscribed event types)',
+        'Deliver each event via HTTP POST; retry failures with backoff until success or exhaustion',
+        'Let customers inspect delivery attempts/status and replay failed deliveries',
+      ],
+      nonFunctionalReqs: [
+        'At-least-once delivery with retries; consumers must dedupe (send a stable event id + signature)',
+        'Isolation: a slow/failing endpoint must not block delivery to others (per-destination concurrency/queues)',
+        'Durability: never lose an accepted event; bounded, observable delivery latency',
+      ],
+      coreEntities: ['Event', 'Subscription/Endpoint', 'DeliveryAttempt', 'DeadLetter'],
+      api: [
+        'Internal: publish(event) → durable queue',
+        'POST to customer URL with HMAC signature + event id; expect 2xx',
+        'GET /deliveries (status, attempts); POST /deliveries/{id}/replay',
+      ],
+      deepDives: [
+        'Retry policy: exponential backoff + jitter, max attempts, then dead-letter; circuit-break a consistently failing endpoint',
+        'Durable queue + workers; per-destination partitioning/concurrency caps so one tenant can’t hog workers (head-of-line isolation)',
+        'Ordering: per-key FIFO when required vs. parallel for throughput; the tradeoff',
+        'Idempotency & security: stable event id for consumer dedupe, HMAC signing + timestamp to prevent replay/spoofing',
+        'Observability: attempt logs, metrics, manual + bulk replay from the dead-letter queue',
+      ],
+      traps: [
+        'Synchronous fire-and-forget with no durable queue — events lost when a consumer is down',
+        'A global worker pool where one slow endpoint starves delivery to everyone (no isolation)',
+        'Retries without idempotency/signing — duplicates and spoofable payloads',
+        'Infinite retries with no backoff or dead-letter',
+      ],
+    },
+  },
+  {
+    id: 'job-scheduler',
+    title: 'Design a distributed job scheduler',
+    difficulty: 'Core',
+    statement:
+      'Design a system that runs jobs at a specified time or on a recurring schedule (cron-like), plus one-off delayed tasks, across a fleet of workers. Jobs must fire close to on-time, run exactly the intended number of times despite worker failures, and scale to millions of scheduled jobs.',
+    hints: {
+      functionalReqs: [
+        'Schedule a job: run-at (one-off/delayed) or recurring (cron expression)',
+        'Execute jobs on workers; track status; retry failures',
+        'Cancel/pause/update a schedule; view run history',
+      ],
+      nonFunctionalReqs: [
+        'Timeliness: jobs fire close to their due time even at high volume',
+        'Exactly-the-intended-runs: a due job runs once, not zero (missed) or many (duplicate) when workers crash',
+        'Durability + horizontal scale to millions of scheduled jobs; no single point of failure',
+      ],
+      coreEntities: ['Job/Schedule definition', 'Trigger/Run instance', 'Worker', 'Lease/Lock'],
+      api: [
+        'POST /jobs (payload, run_at | cron, idempotency key)',
+        'Internal: poll/claim due jobs; report completion; compute next run for recurring',
+        'DELETE/PATCH /jobs/{id}; GET /jobs/{id}/runs',
+      ],
+      deepDives: [
+        'Finding due jobs at scale: time-bucketed/sharded index or a delay queue, not a full-table scan each tick',
+        'Exactly-once-ish dispatch: lease/visibility-timeout or row lock so two schedulers don’t double-fire; idempotency keys on the run',
+        'Failure handling: worker dies mid-run → lease expires → re-dispatch; at-least-once + idempotent jobs; retry/backoff and dead-letter',
+        'Recurring jobs: compute and persist the next fire time atomically on completion; handle missed windows / catch-up policy and DST',
+        'Scaling: partition the schedule space across scheduler nodes; leader/coordination (e.g. via the DB or a coordination service)',
+      ],
+      traps: [
+        'A single scheduler scanning the whole table every second (doesn’t scale, single point of failure)',
+        'No leasing/locking → duplicate or dropped executions when a worker or scheduler fails',
+        'Assuming jobs are idempotent without enforcing it (double-charge / double-send)',
+        'Ignoring clock skew, missed schedules, and timezone/DST for cron',
+      ],
+    },
+  },
+  {
+    id: 'dropbox',
+    title: 'Design a file storage & sync service (Dropbox)',
+    difficulty: 'Hard',
+    statement:
+      'Design a cloud file storage service like Dropbox: users upload files, access them from any device, share files/folders, and have changes sync automatically across all their devices.',
+    hints: {
+      functionalReqs: [
+        'Upload/download files and access them from any device',
+        'Automatically sync changes across a user’s devices',
+        'Share files/folders with permissions; keep version history',
+      ],
+      nonFunctionalReqs: [
+        'Durability is paramount — a stored file must never be lost',
+        'Efficient sync: only changed parts should move, not whole files',
+        'Consistency of file metadata across devices; high availability',
+      ],
+      coreEntities: ['User', 'File/Folder (metadata)', 'Block/Chunk (content)', 'FileVersion', 'Device', 'ShareACL'],
+      api: [
+        'Presigned upload/download URLs — don’t stream file bytes through the app server',
+        'GET /changes?cursor → the journal of changes since a device last synced',
+        'Chunked, resumable upload API (content-addressed blocks)',
+      ],
+      deepDives: [
+        'Split metadata service from block storage; content-addressed chunks enable dedup, resumable uploads, and syncing only changed blocks',
+        'Sync protocol: a per-user change journal/cursor + push notification so devices pull just the delta',
+        'Conflict resolution when two devices edit offline (conflicted copy / last-writer + history)',
+        'Large files: chunking, parallel + resumable upload, compression',
+      ],
+      traps: [
+        'Streaming whole files through the app tier instead of object storage + presigned URLs',
+        'Re-uploading the entire file on a small change (no delta/chunking)',
+        'No story for offline concurrent edits / conflicts',
+        'Treating metadata and block storage as one store',
+      ],
+    },
+  },
+  {
+    id: 'local-delivery',
+    title: 'Design a rapid local delivery service (Gopuff)',
+    difficulty: 'Hard',
+    statement:
+      'Design a rapid delivery service like Gopuff: goods are stocked across 500+ micro distribution centers (DCs); a user browses items available near them, places an order, and a courier delivers it quickly. Catalog and inventory are per-DC.',
+    hints: {
+      functionalReqs: [
+        'Show the catalog/availability for the DC(s) that serve a user’s location',
+        'Place an order, reserving inventory at a DC',
+        'Assign a courier and let the user track the delivery',
+      ],
+      nonFunctionalReqs: [
+        'Per-DC inventory accuracy — never oversell a stocked item',
+        'Low-latency availability lookup by location (geo)',
+        'High availability of the order path; fresh courier location',
+      ],
+      coreEntities: ['User', 'Item', 'Inventory (per DC)', 'DistributionCenter', 'Order', 'Courier', 'Delivery'],
+      api: [
+        'GET /catalog?lat,lng → resolve serving DC(s) and their stock',
+        'POST /orders → reserve inventory (atomic), create order',
+        'Courier location stream; GET /orders/{id}/track',
+      ],
+      deepDives: [
+        'Geo routing: map a user to nearby DC(s) with stock via a geospatial index (geohash/quadtree)',
+        'Inventory reservation: atomic decrement / reservation-with-TTL to prevent oversell under concurrency',
+        'Courier assignment & dispatch (matching, ETA) and real-time tracking fan-out',
+        'Demand spikes and DC capacity limits',
+      ],
+      traps: [
+        'A single global inventory that ignores which DC actually has the item',
+        'Overselling under concurrent orders (no atomic reservation)',
+        'Scanning all DCs for the nearest instead of a geo index',
+        'Underestimating courier-location update volume',
+      ],
+    },
+  },
+  {
+    id: 'proximity-search',
+    title: 'Design a proximity search / reviews service (Yelp)',
+    difficulty: 'Core',
+    statement:
+      'Design a service like Yelp: users search for local businesses by location and category/filters, view business details, and read and write reviews with star ratings.',
+    hints: {
+      functionalReqs: [
+        'Search businesses within a radius by location + category/filters',
+        'View a business’s details and aggregate rating',
+        'Write and read reviews/ratings',
+      ],
+      nonFunctionalReqs: [
+        'Low-latency geo search; read-heavy workload',
+        'Eventual consistency of rating aggregates is fine',
+        'Availability of search over strict freshness',
+      ],
+      coreEntities: ['Business', 'Review', 'RatingAggregate', 'User', 'GeoIndex'],
+      api: [
+        'GET /search?lat,lng,radius,category,filters',
+        'GET /business/{id}; POST /businesses/{id}/reviews',
+      ],
+      deepDives: [
+        'Geospatial indexing (geohash / quadtree / S2) for radius + filter queries',
+        'Maintain the average rating asynchronously instead of recomputing per read',
+        'Search ranking: distance + rating + relevance; cache hot queries',
+        'Review spam/fraud prevention',
+      ],
+      traps: [
+        'Full table scan + distance compute per query (no geo index)',
+        'Recomputing average rating on every read',
+        'Ignoring the read/write split between search and reviews',
+        'No anti-spam/dedup on reviews',
+      ],
+    },
+  },
+  {
+    id: 'matching-app',
+    title: 'Design a dating / matching app (Tinder)',
+    difficulty: 'Core',
+    statement:
+      'Design a dating app like Tinder: users see a stack of nearby candidate profiles filtered by their preferences, swipe right (like) or left (pass), and when two users like each other it becomes a match and they can chat.',
+    hints: {
+      functionalReqs: [
+        'Serve a stack of nearby candidate profiles (location + filters)',
+        'Record swipes (like/pass); never repeat a seen profile',
+        'Detect a mutual like → create a match; enable chat after matching',
+      ],
+      nonFunctionalReqs: [
+        'Low-latency recommendation feed',
+        'Swipes are extremely write-heavy — must scale',
+        'Consistent, exactly-once match creation',
+      ],
+      coreEntities: ['Profile', 'Swipe (decision)', 'Match', 'RecommendationStack', 'GeoIndex'],
+      api: [
+        'GET /recommendations → next batch of candidates',
+        'POST /swipes (targetId, like)',
+        'GET /matches',
+      ],
+      deepDives: [
+        'Geospatial + filter candidate generation (geohash/quadtree, precomputed pools)',
+        'Swipe storage at billions scale: shard by swiper, write-optimized',
+        'Mutual-match detection: on a like, check the reverse swipe and create the match idempotently',
+        'Dedup already-seen profiles; relevance/ranking signal',
+      ],
+      traps: [
+        'Scanning all users per request instead of a geo-bounded pool',
+        'Race/duplicate match when both users swipe at the same time',
+        'Showing already-seen profiles again',
+        'A swipe store that can’t scale to the write volume',
+      ],
+    },
+  },
+  {
+    id: 'live-comments',
+    title: 'Design live comments on a video stream (Facebook Live)',
+    difficulty: 'Core',
+    statement:
+      'Design Facebook Live Comments: viewers post comments on a live video and everyone watching sees a continuous stream of new comments in near-real-time. Viewers can also load earlier comments.',
+    hints: {
+      functionalReqs: [
+        'Post a comment on a live video',
+        'Viewers receive new comments in near-real-time',
+        'Load recent/historical comments (pagination)',
+      ],
+      nonFunctionalReqs: [
+        'Near-real-time fan-out to many concurrent viewers',
+        'Massive read fan-out — one video, potentially millions of viewers',
+        'Eventual ordering; availability over strict consistency',
+      ],
+      coreEntities: ['LiveVideo', 'Comment', 'Viewer/Connection', 'Channel/Topic'],
+      api: [
+        'WebSocket/SSE subscribe to videoId',
+        'POST /comments',
+        'GET /comments?videoId&before=cursor (history)',
+      ],
+      deepDives: [
+        'Real-time delivery: writer → pub/sub → connection gateways → viewer WebSockets (writer isn’t connected to viewers)',
+        'Scaling connections horizontally (connection servers, sticky sessions)',
+        'Viral videos: fan-out amplification → sample/throttle which comments are displayed',
+        'Durable write path + history store; backpressure',
+      ],
+      traps: [
+        'Polling instead of push',
+        'Broadcasting every comment to every viewer on a viral stream (no sampling)',
+        'A single connection server that can’t scale connections',
+        'Keeping comments only in memory (no history/durability)',
+      ],
+    },
+  },
+  {
+    id: 'top-k',
+    title: 'Design a Top-K service (YouTube top videos)',
+    difficulty: 'Hard',
+    statement:
+      'Design a system that returns the top-K items by count over a time window — e.g. the most-viewed YouTube videos in the last hour/day/all-time — given a very high volume of view events.',
+    hints: {
+      functionalReqs: [
+        'Ingest a high-volume stream of view events',
+        'Serve top-K items for a time window (1h / 1d / all-time)',
+        'Support multiple concurrent windows',
+      ],
+      nonFunctionalReqs: [
+        'Very high write volume; approximate results are acceptable for speed/space',
+        'Low-latency top-K reads',
+        'Handle hot keys / skew',
+      ],
+      coreEntities: ['ViewEvent', 'Counter', 'Top-K sketch/heap', 'TimeWindow'],
+      api: ['Stream ingest of events', 'GET /top-k?window=1h&k=100'],
+      deepDives: [
+        'Streaming heavy-hitters: count-min sketch + heap for space-efficient approximate counts',
+        'Exact vs approximate tradeoff; when each is acceptable',
+        'Windowing: time buckets / sliding windows and merging them',
+        'Two-stage (lambda): fast approximate online + batch-exact offline; partition by item to spread hot keys',
+      ],
+      traps: [
+        'A single global sorted set updated on every event (hot-key bottleneck)',
+        'Exact counting at massive scale when approximate suffices',
+        'Recomputing top-K from raw events on each query',
+        'Ignoring window semantics (sliding vs tumbling)',
+      ],
+    },
+  },
+  {
+    id: 'ad-click-aggregator',
+    title: 'Design an ad click aggregator',
+    difficulty: 'Hard',
+    statement:
+      'Design a system that ingests ad-click events and aggregates them by ad/campaign over time windows, so advertisers can see near-real-time metrics (clicks per minute/hour) and optimize campaigns.',
+    hints: {
+      functionalReqs: [
+        'Ingest click events at high volume',
+        'Aggregate by ad/campaign over time windows',
+        'Query metrics (clicks per minute/hour); near-real-time dashboards',
+      ],
+      nonFunctionalReqs: [
+        'Very high write throughput; low-latency aggregate queries',
+        'Exactly-once / no double-count — clicks bill advertisers',
+        'Fault tolerance; no data loss',
+      ],
+      coreEntities: ['ClickEvent', 'Aggregate (ad × window)', 'Campaign'],
+      api: ['POST /click (or tracking pixel)', 'GET /metrics?adId&window'],
+      deepDives: [
+        'Pipeline: durable log (Kafka) → stream processor → OLAP/time-series store',
+        'Windowed aggregation with watermarks for late/out-of-order events',
+        'Exactly-once: event id + idempotent writes so retries don’t double-count (it’s money)',
+        'Hot partitions for popular ads; real-time approximate + batch-exact reconciliation; click-fraud filtering',
+      ],
+      traps: [
+        'Writing each click to a DB and aggregating on read (won’t scale)',
+        'Double-counting on retries (no idempotency)',
+        'Ignoring late/out-of-order events',
+        'A single aggregation key hot-spotting',
+      ],
+    },
+  },
+  {
+    id: 'news-aggregator',
+    title: 'Design a news aggregator (Google News)',
+    difficulty: 'Core',
+    statement:
+      'Design a news aggregator like Google News: ingest articles from thousands of publishers, group articles covering the same story, rank them, and serve users a fresh, scrollable feed by topic/region.',
+    hints: {
+      functionalReqs: [
+        'Ingest articles from many publishers (feeds/crawl)',
+        'Dedupe and cluster articles about the same story',
+        'Rank/personalize and serve a scrollable feed by topic/region',
+      ],
+      nonFunctionalReqs: [
+        'Freshness within minutes; scale of sources',
+        'Read-heavy feed; relevance/ranking quality',
+        'Availability',
+      ],
+      coreEntities: ['Publisher/Source', 'Article', 'StoryCluster', 'Topic', 'UserFeed'],
+      api: ['Internal ingest pipeline', 'GET /feed?topic,region,cursor'],
+      deepDives: [
+        'Near-real-time ingestion (RSS/crawl) and normalization',
+        'Same-story clustering: near-duplicate detection (shingling/embeddings)',
+        'Ranking: freshness + source authority + personalization',
+        'Feed serving: precompute vs on-the-fly + caching; shard by topic/region',
+      ],
+      traps: [
+        'Showing many duplicates of one story (no clustering)',
+        'Stale feed from batch-only ingestion',
+        'Ranking purely by recency',
+        'Recomputing the whole feed per request',
+      ],
+    },
+  },
+  {
+    id: 'activity-tracking',
+    title: 'Design a fitness activity tracker (Strava)',
+    difficulty: 'Core',
+    statement:
+      'Design a fitness tracking app like Strava: users record activities (GPS tracks + metrics), view stats and maps, share to a followers’ feed, and compete on segment leaderboards.',
+    hints: {
+      functionalReqs: [
+        'Record and upload an activity (GPS track + metrics)',
+        'View activity stats/maps; followers’ activity feed',
+        'Segments and leaderboards',
+      ],
+      nonFunctionalReqs: [
+        'Ingest large GPS payloads efficiently; durable activities',
+        'Read-heavy feed; reasonably fresh leaderboards',
+      ],
+      coreEntities: ['User', 'Activity (GPS stream)', 'Segment', 'SegmentEffort', 'Leaderboard', 'Feed'],
+      api: ['POST /activities (upload track)', 'GET /feed', 'GET /segments/{id}/leaderboard'],
+      deepDives: [
+        'Store/process GPS streams (time-series, compression, map-matching)',
+        'Segment matching done asynchronously after upload (spatial matching)',
+        'Leaderboards: per-segment sorted sets with time windows',
+        'Feed fan-out to followers (on-write vs on-read)',
+      ],
+      traps: [
+        'Running segment matching synchronously on upload (slow)',
+        'Recomputing leaderboards on read',
+        'Naive feed fan-out for users with huge follower counts',
+        'Storing raw GPS without compression/time-series store',
+      ],
+    },
+  },
+  {
+    id: 'auction',
+    title: 'Design an online auction service',
+    difficulty: 'Hard',
+    statement:
+      'Design an online auction service: users list items with an end time, others place increasingly higher bids, watchers see the current high bid in real time, and at the end time the highest bidder wins.',
+    hints: {
+      functionalReqs: [
+        'List an item with an end time',
+        'Place a bid that must exceed the current high bid',
+        'Show the current high bid in real time; close and award at end time',
+      ],
+      nonFunctionalReqs: [
+        'Strong consistency on bids — exactly one winner, correct high bid under concurrency',
+        'Real-time price updates to watchers',
+        'Durability; handle bid spikes near close (sniping)',
+      ],
+      coreEntities: ['Auction/Item', 'Bid', 'User', 'Watcher'],
+      api: ['POST /auctions/{id}/bids', 'WS subscribe to price', 'Close job at end time'],
+      deepDives: [
+        'Concurrency control: conditional write "bid > current_max" via atomic CAS / row lock / per-auction serialization',
+        'Real-time fan-out of the new high bid (pub/sub)',
+        'Auction close via scheduler/delay queue with exactly-once close; anti-sniping extension',
+        'Idempotent bid submission; fairness/ordering',
+      ],
+      traps: [
+        'Read-modify-write race → lost bids or two winners',
+        'Broadcasting to all watchers without scalable pub/sub',
+        'Relying on the client clock for closing',
+        'No idempotency on bids (duplicates)',
+      ],
+    },
+  },
+  {
+    id: 'price-tracker',
+    title: 'Design a price tracker (CamelCamelCamel)',
+    difficulty: 'Core',
+    statement:
+      'Design a price tracking service like CamelCamelCamel: it monitors product prices over time, shows price history, and alerts users when a price drops below a threshold they set. A popular browser extension also displays price history on the product page.',
+    hints: {
+      functionalReqs: [
+        'Track product prices over time and show history',
+        'Let users set price-drop thresholds/alerts',
+        'Notify when a price drops below the threshold',
+      ],
+      nonFunctionalReqs: [
+        'Scale to many products with periodic checks; timely alerts',
+        'Efficient time-series storage of history',
+        'Don’t hammer/abuse the price source',
+      ],
+      coreEntities: ['Product', 'PricePoint (time-series)', 'Watch/Alert (user threshold)', 'Notification'],
+      api: ['POST /watches (productId, threshold)', 'GET /products/{id}/history', 'Ingest price updates'],
+      deepDives: [
+        'Price ingestion at scale: scheduled crawl/feeds, per-source rate limits, skip unchanged',
+        'Time-series history with downsampling/retention',
+        'Alert evaluation: on a new price, look up watches with threshold ≥ price via an index (not a scan)',
+        'High-read extension path: cache price history behind a CDN',
+      ],
+      traps: [
+        'Re-checking every product on a fixed interval regardless of change (waste)',
+        'Scanning all watches per price update (no threshold index)',
+        'Storing every price point forever with no downsampling',
+        'Alert storms / duplicate notifications',
+      ],
+    },
+  },
+  {
+    id: 'photo-sharing',
+    title: 'Design a photo/video sharing feed (Instagram)',
+    difficulty: 'Core',
+    statement:
+      'Design Instagram: users upload photos/videos, follow others, and see a home feed of posts from people they follow, with likes and comments. Handle accounts with huge follower counts.',
+    hints: {
+      functionalReqs: [
+        'Upload photos/videos; follow/unfollow users',
+        'Home feed of followed users’ posts',
+        'Like and comment',
+      ],
+      nonFunctionalReqs: [
+        'Read-heavy feed at low latency; fresh enough',
+        'Efficient media storage + delivery (CDN)',
+        'Handle celebrity (huge-follower) accounts',
+      ],
+      coreEntities: ['User', 'Post (media)', 'Follow (graph)', 'Feed', 'Like/Comment'],
+      api: ['Presigned media upload', 'GET /feed?cursor', 'POST /posts; follow/unfollow'],
+      deepDives: [
+        'Media pipeline: upload → transcode/resize variants → object store + CDN',
+        'Feed generation: fan-out-on-write vs on-read, and a hybrid for celebrities',
+        'Feed storage, pagination, and caching',
+        'The hot-account / write-amplification problem',
+      ],
+      traps: [
+        'Serving media through app servers instead of a CDN',
+        'Pure fan-out-on-write for a celebrity (write amplification)',
+        'Recomputing the feed each request without caching',
+        'No transcoding/variants for different devices',
+      ],
+    },
+  },
+  {
+    id: 'stock-trading',
+    title: 'Design a stock trading platform (Robinhood)',
+    difficulty: 'Hard',
+    statement:
+      'Design a commission-free trading platform like Robinhood: stream real-time market quotes, let users place/cancel orders (market/limit) routed to market makers, and show their portfolio and order status — keeping balances and executions correct.',
+    hints: {
+      functionalReqs: [
+        'Real-time quotes / market data',
+        'Place and cancel orders (market/limit); show order status',
+        'Portfolio and positions',
+      ],
+      nonFunctionalReqs: [
+        'Low-latency quote fan-out (massive reads)',
+        'Correctness of orders and balances — it’s money, no double execution',
+        'Durability/audit; availability during market hours',
+      ],
+      coreEntities: ['Account', 'Order', 'Position/Portfolio', 'Quote/MarketData', 'Trade/Execution'],
+      api: ['WS market-data stream', 'POST /orders; cancel', 'GET /portfolio; order status stream'],
+      deepDives: [
+        'Market-data fan-out: publishers → many clients with conflation/throttling of quote ticks',
+        'Order lifecycle: submit → route to market maker → fill/partial → settle, as an idempotent state machine',
+        'Balance consistency: double-entry ledger to avoid overspend / double-spend',
+        'Reconciliation with external exchanges; real-time position updates',
+      ],
+      traps: [
+        'Pushing every quote tick to every client (no conflation)',
+        'Non-idempotent order submission (double orders)',
+        'Eventually-consistent balances that allow overspend',
+        'Treating fills as fire-and-forget (no ledger/audit)',
+      ],
+    },
+  },
+  {
+    id: 'collab-editor',
+    title: 'Design a collaborative document editor (Google Docs)',
+    difficulty: 'Hard',
+    statement:
+      'Design a collaborative editor like Google Docs: multiple users edit the same rich-text document at once, see each other’s changes and cursors in real time, and the document converges to a consistent state with full history.',
+    hints: {
+      functionalReqs: [
+        'Create/edit rich-text documents',
+        'Real-time multi-user collaboration with live cursors',
+        'Persistence and version history',
+      ],
+      nonFunctionalReqs: [
+        'Low-latency convergence — all users see a consistent document',
+        'Conflict-free concurrent edits',
+        'Availability and durability of every edit',
+      ],
+      coreEntities: ['Document', 'Edit/Operation', 'Session/Collaborator', 'Version/Snapshot'],
+      api: ['WS connect to docId', 'Send ops; receive ops/acks', 'Load doc + version'],
+      deepDives: [
+        'Concurrency model: Operational Transformation vs CRDTs — how concurrent edits converge',
+        'Central server transforming/ordering ops vs peer CRDT merge',
+        'Persistence: op log + periodic snapshots, replay to reconstruct',
+        'Presence/cursor fan-out; offline edits & reconciliation; scaling connections per doc',
+      ],
+      traps: [
+        'Last-write-wins or locking the doc (loses concurrent edits)',
+        'No convergence strategy (OT/CRDT) for concurrent ops',
+        'Storing only snapshots with no op history (can’t merge)',
+        'A single server per doc with no durability',
+      ],
+    },
+  },
+  {
+    id: 'metrics-monitoring',
+    title: 'Design a metrics monitoring & alerting platform (Datadog)',
+    difficulty: 'Hard',
+    statement:
+      'Design a metrics monitoring platform like Datadog/Prometheus: ingest time-series metrics (CPU, memory, latency) from many hosts/services, store them, power dashboards with aggregate queries, and fire alerts when thresholds are breached.',
+    hints: {
+      functionalReqs: [
+        'Ingest time-series metrics from many hosts/services',
+        'Store as time-series; query/aggregate for dashboards',
+        'Alert when thresholds are breached',
+      ],
+      nonFunctionalReqs: [
+        'Very high write throughput (millions of series)',
+        'Efficient storage: compression, retention/downsampling',
+        'Fast range/aggregation queries; reliable alerting',
+      ],
+      coreEntities: ['Series (name + tags)', 'DataPoint', 'Dashboard/Query', 'AlertRule'],
+      api: ['Push or scrape ingest', 'GET /query?metric,tags,range,agg', 'Alert-rule CRUD'],
+      deepDives: [
+        'Ingestion: agent → durable buffer → TSDB; push vs pull/scrape',
+        'Time-series storage: columnar, delta/Gorilla compression, retention tiers + downsampling',
+        'High-cardinality tags (label explosion) and how to bound it',
+        'Query via pre-aggregation/rollups; alerting engine evaluating rules on streams with flap/dedup',
+      ],
+      traps: [
+        'A generic RDBMS for time-series (write/query won’t scale)',
+        'Unbounded tag cardinality blowing up the index',
+        'No downsampling/retention (storage explosion)',
+        'Evaluating alerts by scanning raw data each time',
+      ],
+    },
+  },
+  {
+    id: 'llm-chat',
+    title: 'Design an LLM chat service (ChatGPT)',
+    difficulty: 'Core',
+    statement:
+      'Design a conversational AI service like ChatGPT: users send natural-language prompts and get responses streamed back token-by-token from a large language model. Conversations are saved so users can resume an old chat with its context.',
+    hints: {
+      functionalReqs: [
+        'Send a prompt; stream the model response token-by-token',
+        'Persist conversations',
+        'Resume an old chat with its prior context',
+      ],
+      nonFunctionalReqs: [
+        'Low time-to-first-token and smooth streaming',
+        'GPU inference is the scarce, expensive resource',
+        'Conversation durability; per-user rate limits/quotas',
+      ],
+      coreEntities: ['User', 'Conversation', 'Message', 'InferenceJob', 'GPU Worker'],
+      api: ['POST /chat (conversationId, prompt) → SSE/WebSocket token stream', 'GET /conversations/{id}'],
+      deepDives: [
+        'Streaming: SSE/WebSocket token streaming with backpressure and cancellation',
+        'Inference serving: GPU worker pool, request batching for throughput, queueing, autoscaling scarce GPUs',
+        'Context management: store history, truncate/summarize to fit the context window',
+        'Rate limiting/quotas and cost control; caching (KV-cache, repeated prompts)',
+      ],
+      traps: [
+        'Blocking request/response instead of streaming (slow, bad UX)',
+        'No batching → GPU underutilization',
+        'Sending unbounded history that exceeds the context window',
+        'Ignoring cancellation — wasting GPU on abandoned streams',
+      ],
+    },
+  },
 ]
 
 export const DEFAULT_PROBLEM = PROBLEMS[0]
 
 export function getProblem(id: string): Problem {
   return PROBLEMS.find((p) => p.id === id) || DEFAULT_PROBLEM
+}
+
+// Compact catalog (id + title + one-line statement) the JD→problem SELECTOR ranks over. The selector
+// only ever returns ids from this list, so a recommended problem is always a real, curated library
+// problem that grades on its own hand-authored hints — the LLM maps business domain → known problem,
+// it never invents the problem or its answer key.
+export function problemCatalog(): { id: string; title: string; statement: string }[] {
+  return PROBLEMS.map((p) => ({ id: p.id, title: p.title, statement: p.statement }))
 }

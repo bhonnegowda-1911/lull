@@ -1,5 +1,4 @@
 import { chatStructured } from '../llmClient'
-import { GRADING_TEMPERATURE } from '../models'
 import { DEFAULT_CRITERIA, type Criteria } from '../../data/criteria'
 import type { Story } from '../../data/stories'
 import { FACETS, facetText, type Project } from '../../data/projects'
@@ -21,6 +20,7 @@ function storiesBlock(stories: Story[]): string {
     if (s.star.task) lines.push(`  Task: ${s.star.task}`)
     if (s.star.actions?.length) lines.push(`  Actions: ${s.star.actions.join('; ')}`)
     if (s.star.result) lines.push(`  Result: ${s.star.result}`)
+    if (s.star.takeaway) lines.push(`  Takeaway: ${s.star.takeaway}`)
     if (s.impact.metrics?.length) lines.push(`  Metrics: ${s.impact.metrics.join('; ')}`)
     lines.push(`  Ownership: ${s.impact.ownership}; blast radius: ${s.impact.blastRadius}`)
     if (s.trueCeilingLevel) lines.push(`  Work demonstrates up to: ${s.trueCeilingLevel}`)
@@ -107,7 +107,6 @@ export function makeLlmAnalyzer(criteria: Criteria = DEFAULT_CRITERIA) {
         system: criteria.systemPrompt,
         user,
         schema: criteria.schema,
-        temperature: GRADING_TEMPERATURE,
         signal: ctx.signal,
       })
 

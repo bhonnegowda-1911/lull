@@ -1,5 +1,5 @@
 import { chatStructured } from '../llmClient'
-import { DEFAULT_MODEL, GRADING_TEMPERATURE } from '../models'
+import { DEFAULT_MODEL } from '../models'
 import type { Stage } from '../../data/sysdesign/stages'
 import type { Problem } from '../../data/sysdesign/problems'
 
@@ -34,7 +34,7 @@ export interface PriorStage {
   decisions: string
 }
 
-const TURN_SCHEMA = {
+export const TURN_SCHEMA = {
   type: 'object',
   properties: {
     reply: {
@@ -201,7 +201,6 @@ export async function runStageTurn({
     system: systemPrompt(stage, problem),
     user: buildUserMessage(transcript, message, priorStages),
     schema: TURN_SCHEMA,
-    temperature: GRADING_TEMPERATURE,
     signal,
   })
 

@@ -27,12 +27,18 @@ export interface Profile {
 
 export const DEFAULT_PROFILE: Profile = { resumeText: '', roles: [], targetLevel: 'senior' }
 
-/** The S/T/A/R ground truth — what actually happened, in the candidate's own record. */
+/**
+ * The S/T/A/R ground truth — what actually happened, in the candidate's own record. `takeaway` is
+ * the closing "so what / what I learned" (the L in STAR-L): the one line that makes a story land in
+ * a behavioral round and seeds a resume headline. It rides in this jsonb blob, so it persists with
+ * no schema change.
+ */
 export interface StoryStar {
   situation: string
   task: string
   actions: string[]
   result: string
+  takeaway: string
 }
 
 /** Quantified scope/impact metadata — the part interviews most often undersell. */
@@ -61,7 +67,7 @@ export interface Story {
 /** A freshly extracted story before it is persisted (no id/status/link yet). */
 export type StoryDraft = Omit<Story, 'id' | 'status' | 'sourceSessionIds' | 'projectId'>
 
-export const EMPTY_STAR: StoryStar = { situation: '', task: '', actions: [], result: '' }
+export const EMPTY_STAR: StoryStar = { situation: '', task: '', actions: [], result: '', takeaway: '' }
 export const EMPTY_IMPACT: StoryImpact = { metrics: [], ownership: 'i', blastRadius: 'team' }
 
 /** A blank story for the manual editor. */

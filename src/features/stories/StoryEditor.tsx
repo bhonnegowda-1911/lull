@@ -15,8 +15,8 @@ const BLAST: BlastRadius[] = ['self', 'team', 'org']
 const linesToList = (s: string): string[] => s.split('\n').map((l) => l.trim()).filter(Boolean)
 const listToLines = (l: string[]): string => (l || []).join('\n')
 
-const inputCls = 'w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-indigo-500 focus:outline-none'
-const labelCls = 'text-xs font-semibold uppercase tracking-wide text-slate-500'
+const inputCls = 'w-full rounded-md border border-stone-300 px-3 py-1.5 text-sm focus:border-terracotta-500 focus:outline-none'
+const labelCls = 'text-xs font-semibold uppercase tracking-wide text-stone-500'
 
 export default function StoryEditor({
   initial,
@@ -33,6 +33,7 @@ export default function StoryEditor({
   const [task, setTask] = useState(initial.star.task)
   const [actions, setActions] = useState(listToLines(initial.star.actions))
   const [result, setResult] = useState(initial.star.result)
+  const [takeaway, setTakeaway] = useState(initial.star.takeaway ?? '')
   const [metrics, setMetrics] = useState(listToLines(initial.impact.metrics))
   const [ownership, setOwnership] = useState<Ownership>(initial.impact.ownership)
   const [blastRadius, setBlastRadius] = useState<BlastRadius>(initial.impact.blastRadius)
@@ -54,7 +55,7 @@ export default function StoryEditor({
       ...initial,
       title: title.trim(),
       roleRef: roleRef.trim() || null,
-      star: { situation, task, actions: linesToList(actions), result },
+      star: { situation, task, actions: linesToList(actions), result, takeaway: takeaway.trim() },
       impact: { metrics: linesToList(metrics), ownership, blastRadius },
       themes,
       trueCeilingLevel: level || null,
@@ -63,7 +64,7 @@ export default function StoryEditor({
   }
 
   return (
-    <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="space-y-4 rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-5 shadow-sm">
       <div>
         <label className={labelCls}>Title</label>
         <input className={`mt-1 ${inputCls}`} value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Cut billing latency 40%" />
@@ -101,6 +102,15 @@ export default function StoryEditor({
       <div>
         <label className={labelCls}>Result</label>
         <textarea className={`mt-1 ${inputCls}`} rows={2} value={result} onChange={(e) => setResult(e.target.value)} />
+      </div>
+      <div>
+        <label className={labelCls}>Takeaway — the one-line “so what” / what you learned</label>
+        <input
+          className={`mt-1 ${inputCls}`}
+          value={takeaway}
+          onChange={(e) => setTakeaway(e.target.value)}
+          placeholder="e.g. Designing for the failure path first is what made the cutover boring."
+        />
       </div>
 
       <div>
@@ -145,7 +155,7 @@ export default function StoryEditor({
               type="button"
               onClick={() => toggleTheme(theme)}
               className={`rounded-full px-2.5 py-1 text-xs ${
-                themes.includes(theme) ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                themes.includes(theme) ? 'bg-terracotta-600 text-white' : 'bg-stone-100 text-stone-600 hover:bg-stone-200'
               }`}
             >
               {theme}
@@ -154,15 +164,15 @@ export default function StoryEditor({
         </div>
       </div>
 
-      <div className="flex justify-end gap-2 border-t border-slate-100 pt-3">
-        <button type="button" onClick={onCancel} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
+      <div className="flex justify-end gap-2 border-t border-stone-100 pt-3">
+        <button type="button" onClick={onCancel} className="rounded-md border border-stone-300 px-4 py-2 text-sm font-medium text-stone-700 hover:bg-stone-50">
           Cancel
         </button>
         <button
           type="button"
           onClick={save}
           disabled={!title.trim()}
-          className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+          className="rounded-md bg-terracotta-600 px-4 py-2 text-sm font-medium text-white hover:bg-terracotta-500 disabled:opacity-50"
         >
           Save
         </button>

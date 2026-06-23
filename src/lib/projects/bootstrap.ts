@@ -1,5 +1,5 @@
 import { chatStructured } from '../llmClient'
-import { DEFAULT_MODEL, GRADING_TEMPERATURE } from '../models'
+import { DEFAULT_MODEL } from '../models'
 
 // Cold-start: turn a pasted resume into skeleton PROJECTS (one per notable effort) so the builder
 // isn't empty on day one. Only title/roleRef/summary are filled — the competency facets are left
@@ -17,7 +17,7 @@ notable, story-worthy effort (aim for 3-6; skip generic duties). Use ONLY what t
 do not invent. For each: a short title, the roleRef (company/role), and a 1-2 sentence summary of
 what was built. Do NOT attempt the deeper competency details — those are captured later.`
 
-const SCHEMA = {
+export const SCHEMA = {
   type: 'object',
   properties: {
     projects: {
@@ -49,7 +49,6 @@ export async function bootstrapProjects(resumeText: string, signal?: AbortSignal
     user: `RESUME:\n${trimmed}`,
     schema: SCHEMA,
     maxTokens: 1500,
-    temperature: GRADING_TEMPERATURE,
     signal,
   })
   return parsed.projects || []

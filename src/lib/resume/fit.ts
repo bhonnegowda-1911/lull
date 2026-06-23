@@ -1,5 +1,4 @@
 import { chatStructured } from '../llmClient'
-import { GRADING_TEMPERATURE } from '../models'
 import { RESUME_FIT_CRITERIA } from '../../data/resumeCriteria'
 import type { Story } from '../../data/stories'
 import type { ParsedJob, ResumeFit } from '../../types'
@@ -39,7 +38,7 @@ export async function analyzeResumeFit({
     user,
     schema: RESUME_FIT_CRITERIA.schema,
     maxTokens: 2500,
-    temperature: GRADING_TEMPERATURE,
+    // Opus 4.7 rejects `temperature` — omit it (steer via prompt instead).
     signal,
   })
   return parsed

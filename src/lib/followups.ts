@@ -1,5 +1,5 @@
 import { chatStructured } from './llmClient'
-import { DEFAULT_MODEL, GRADING_TEMPERATURE } from './models'
+import { DEFAULT_MODEL } from './models'
 import type { BehavioralLevel, Transcript } from '../types'
 
 // Real interviewers probe. These two calls simulate that: generate follow-up questions
@@ -44,7 +44,7 @@ than piling on shallow questions. You may reference their resume to probe (e.g. 
 role they list), but never assume facts beyond the resume and what they said.`
 }
 
-const GENERATE_SCHEMA = {
+export const GENERATE_SCHEMA = {
   type: 'object',
   properties: {
     followups: {
@@ -95,7 +95,6 @@ export async function generateFollowups({
     user,
     schema: GENERATE_SCHEMA,
     maxTokens: 600,
-    temperature: GRADING_TEMPERATURE,
     signal,
   })
   return parsed.followups || []

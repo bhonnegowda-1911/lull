@@ -41,14 +41,14 @@ function FollowUpRow({
   }
 
   return (
-    <li className="rounded-lg border border-slate-200 p-3">
+    <li className="rounded-lg border border-stone-200 p-3">
       <div className="flex items-start gap-2">
-        <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-700 text-xs font-bold text-white">
+        <span className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-stone-700 text-xs font-bold text-white">
           {index + 1}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-slate-800">{followup.question}</p>
-          {followup.rationale && <p className="mt-0.5 text-xs text-slate-400">{followup.rationale}</p>}
+          <p className="text-sm font-medium text-stone-800">{followup.question}</p>
+          {followup.rationale && <p className="mt-0.5 text-xs text-stone-400">{followup.rationale}</p>}
         </div>
         {state.status === 'done' && <span className="shrink-0 text-xs font-medium text-emerald-600">Answered ✓</span>}
       </div>
@@ -58,7 +58,7 @@ function FollowUpRow({
           <button
             type="button"
             onClick={() => setActive(true)}
-            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="rounded-md border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-50"
           >
             Record answer
           </button>
@@ -67,8 +67,8 @@ function FollowUpRow({
         {active && <Recorder mode={mode} onModeChange={setMode} onUseTake={handleUseTake} />}
 
         {state.status === 'transcribing' && (
-          <div className="flex items-center gap-2 text-sm text-slate-500">
-            <span className="h-4 w-4 animate-spin rounded-full border-2 border-slate-200 border-t-indigo-600" />
+          <div className="flex items-center gap-2 text-sm text-stone-500">
+            <span className="h-4 w-4 animate-spin rounded-full border-2 border-stone-200 border-t-terracotta-600" />
             Transcribing…
           </div>
         )}
@@ -86,14 +86,14 @@ function FollowUpRow({
           <div>
             {state.transcript?.text && (
               <details className="text-sm">
-                <summary className="cursor-pointer text-slate-500">Your answer</summary>
-                <p className="mt-1 text-slate-600">{state.transcript.text}</p>
+                <summary className="cursor-pointer text-stone-500">Your answer</summary>
+                <p className="mt-1 text-stone-600">{state.transcript.text}</p>
               </details>
             )}
             <button
               type="button"
               onClick={() => setState({ status: 'idle' })}
-              className="mt-2 text-sm font-medium text-indigo-600 hover:text-indigo-500"
+              className="mt-2 text-sm font-medium text-terracotta-600 hover:text-terracotta-500"
             >
               Re-record
             </button>

@@ -51,14 +51,14 @@ export default function ResumeTab({ onBootstrapped }: { onBootstrapped?: () => v
     }
   }
 
-  const inputCls = 'mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none'
-  const labelCls = 'block text-xs font-semibold uppercase tracking-wide text-slate-500'
+  const inputCls = 'mt-1 w-full rounded-md border border-stone-300 px-3 py-2 text-sm focus:border-terracotta-500 focus:outline-none'
+  const labelCls = 'block text-xs font-semibold uppercase tracking-wide text-stone-500'
 
   return (
-    <div className="space-y-4 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="space-y-4 rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-5 shadow-sm">
       <div>
-        <h3 className="text-sm font-semibold text-slate-700">Resume & target level</h3>
-        <p className="mt-0.5 text-xs text-slate-500">
+        <h3 className="text-sm font-semibold text-stone-700">Resume & target level</h3>
+        <p className="mt-0.5 text-xs text-stone-500">
           Interview mode shows the interviewer only your resume and holds you to your target level.
           Coaching mode adds your projects + stories on top.
         </p>
@@ -93,7 +93,7 @@ export default function ResumeTab({ onBootstrapped }: { onBootstrapped?: () => v
           type="button"
           onClick={persist}
           disabled={saving}
-          className="rounded-md bg-indigo-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+          className="rounded-md bg-terracotta-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-terracotta-500 disabled:opacity-50"
         >
           {saving ? 'Saving…' : 'Save'}
         </button>
@@ -101,13 +101,13 @@ export default function ResumeTab({ onBootstrapped }: { onBootstrapped?: () => v
           type="button"
           onClick={bootstrap}
           disabled={bootstrapping || !profile.resumeText.trim()}
-          className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          className="rounded-md border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
         >
           {bootstrapping ? 'Working…' : 'Bootstrap projects from resume'}
         </button>
         {savedMsg && <span className="text-xs text-green-600">{savedMsg}</span>}
       </div>
-      {bootstrapMsg && <p className="text-xs text-slate-500">{bootstrapMsg}</p>}
+      {bootstrapMsg && <p className="text-xs text-stone-500">{bootstrapMsg}</p>}
     </div>
   )
 }

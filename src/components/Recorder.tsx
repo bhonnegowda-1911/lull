@@ -148,10 +148,10 @@ export default function Recorder({ mode, onModeChange, onUseTake, disabled }: Re
   const overCap = elapsed >= MAX_SECONDS - 1
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-5 shadow-sm">
       <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-700">Record your answer</h3>
-        <div className="inline-flex rounded-md border border-slate-200 p-0.5 text-sm">
+        <h3 className="text-sm font-semibold text-stone-700">Record your answer</h3>
+        <div className="inline-flex rounded-md border border-stone-200 p-0.5 text-sm">
           {(['audio', 'video'] as const).map((m) => (
             <button
               key={m}
@@ -159,7 +159,7 @@ export default function Recorder({ mode, onModeChange, onUseTake, disabled }: Re
               disabled={recording || disabled}
               onClick={() => onModeChange(m)}
               className={`rounded px-3 py-1 capitalize disabled:opacity-50 ${
-                mode === m ? 'bg-indigo-600 text-white' : 'text-slate-600'
+                mode === m ? 'bg-terracotta-600 text-white' : 'text-stone-600'
               }`}
             >
               {m === 'audio' ? 'Audio' : 'Camera + mic'}
@@ -182,21 +182,21 @@ export default function Recorder({ mode, onModeChange, onUseTake, disabled }: Re
           <button
             type="button"
             onClick={stopRecording}
-            className="inline-flex items-center gap-2 rounded-md bg-slate-800 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+            className="inline-flex items-center gap-2 rounded-md bg-stone-800 px-4 py-2 text-sm font-medium text-white hover:bg-stone-700"
           >
             <span className="h-2.5 w-2.5 bg-white" /> Stop
           </button>
         )}
 
         {recording && (
-          <span className={`font-mono text-sm ${overCap ? 'text-red-600' : 'text-slate-600'}`}>
+          <span className={`font-mono text-sm ${overCap ? 'text-red-600' : 'text-stone-600'}`}>
             ● {formatTime(elapsed)} / {formatTime(MAX_SECONDS)}
           </span>
         )}
 
-        <span className="text-slate-300">|</span>
+        <span className="text-stone-300">|</span>
 
-        <label className="cursor-pointer text-sm font-medium text-indigo-600 hover:text-indigo-500">
+        <label className="cursor-pointer text-sm font-medium text-terracotta-600 hover:text-terracotta-500">
           Upload a file
           <input
             type="file"
@@ -209,7 +209,7 @@ export default function Recorder({ mode, onModeChange, onUseTake, disabled }: Re
       </div>
 
       {isVideo && !take && (
-        <p className="mt-2 text-xs text-slate-400">
+        <p className="mt-2 text-xs text-stone-400">
           Tip: for takes longer than a minute, Audio keeps the file small (Whisper caps at 25 MB).
         </p>
       )}
@@ -217,14 +217,14 @@ export default function Recorder({ mode, onModeChange, onUseTake, disabled }: Re
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
 
       {take && (
-        <div className="mt-4 space-y-3 border-t border-slate-100 pt-4">
+        <div className="mt-4 space-y-3 border-t border-stone-100 pt-4">
           <Media src={take.url} controls className={take.isVideo ? 'w-full rounded-md' : 'w-full'} />
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => onUseTake(take.blob, { durationSec: take.durationSec, isVideo: take.isVideo })}
               disabled={disabled}
-              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+              className="rounded-md bg-terracotta-600 px-4 py-2 text-sm font-medium text-white hover:bg-terracotta-500 disabled:opacity-50"
             >
               Use this take →
             </button>
@@ -232,12 +232,12 @@ export default function Recorder({ mode, onModeChange, onUseTake, disabled }: Re
               type="button"
               onClick={clearTake}
               disabled={disabled}
-              className="rounded-md px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100 disabled:opacity-50"
+              className="rounded-md px-3 py-2 text-sm font-medium text-stone-600 hover:bg-stone-100 disabled:opacity-50"
             >
               Discard
             </button>
             {take.durationSec != null && (
-              <span className="text-xs text-slate-400">{formatTime(take.durationSec)}</span>
+              <span className="text-xs text-stone-400">{formatTime(take.durationSec)}</span>
             )}
           </div>
         </div>

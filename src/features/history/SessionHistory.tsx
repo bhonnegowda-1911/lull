@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { listSessions, getSession, deleteSession, type SessionKind, type SessionSummary } from '../../lib/sessionStore'
+import EmptyState from '../../components/EmptyState'
 
 // Cross-mode history of every past session (behavioral, system-design, and future kinds).
 // Opening a row loads the full record and hands it to the matching feature route via router
@@ -13,7 +14,7 @@ const ROUTE_FOR: Record<string, string> = {
   build: '/interview/build',
 }
 const KIND_BADGE: Record<string, string> = {
-  behavioral: 'bg-indigo-100 text-indigo-700',
+  behavioral: 'bg-terracotta-100 text-terracotta-700',
   sysdesign: 'bg-emerald-100 text-emerald-700',
   build: 'bg-violet-100 text-violet-700',
 }
@@ -70,16 +71,16 @@ export default function SessionHistory() {
   }
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-5 shadow-sm">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold text-slate-900">Past sessions</h2>
-        <div className="inline-flex rounded-md border border-slate-200 p-0.5 text-xs">
+        <h2 className="text-base font-semibold text-stone-900">Past sessions</h2>
+        <div className="inline-flex rounded-md border border-stone-200 p-0.5 text-xs">
           {FILTERS.map((f) => (
             <button
               key={f.value}
               type="button"
               onClick={() => setFilter(f.value)}
-              className={`rounded px-2.5 py-1 ${filter === f.value ? 'bg-slate-800 text-white' : 'text-slate-600'}`}
+              className={`rounded px-2.5 py-1 ${filter === f.value ? 'bg-stone-800 text-white' : 'text-stone-600'}`}
             >
               {f.label}
             </button>
@@ -88,12 +89,19 @@ export default function SessionHistory() {
       </div>
 
       {loading ? (
-        <p className="mt-4 text-sm text-slate-500">Loading…</p>
+        <p className="mt-4 text-sm text-stone-500">Loading…</p>
       ) : rows.length === 0 ? (
-        <p className="mt-4 text-sm text-slate-500">
-          No saved sessions yet. Complete a behavioral or system-design session and it’ll show up
-          here. (Durable history needs the backend running — see the README.)
-        </p>
+        <EmptyState
+          className="mt-4"
+          icon={
+            <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <path d="M3 12a9 9 0 1 0 9-9 9.7 9.7 0 0 0-6.7 2.9L3 8" />
+              <path d="M3 4v4h4M12 7v5l3 2" />
+            </svg>
+          }
+          title="No saved sessions yet"
+          description="Complete a behavioral or system-design session and it’ll show up here. (Durable history needs the backend running — see the README.)"
+        />
       ) : (
         <ul className="mt-4 space-y-2">
           {rows.map((row) => (
@@ -101,16 +109,16 @@ export default function SessionHistory() {
               <button
                 type="button"
                 onClick={() => open(row)}
-                className="group flex w-full items-center justify-between gap-3 rounded-lg border border-slate-200 p-3 text-left hover:border-indigo-300 hover:bg-indigo-50/40"
+                className="group flex w-full items-center justify-between gap-3 rounded-lg border border-stone-200 p-3 text-left hover:border-terracotta-300 hover:bg-terracotta-50/40"
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${KIND_BADGE[row.kind] || 'bg-slate-100 text-slate-600'}`}>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${KIND_BADGE[row.kind] || 'bg-stone-100 text-stone-600'}`}>
                       {KIND_LABEL[row.kind] || row.kind}
                     </span>
-                    <span className="truncate text-sm font-medium text-slate-800">{row.title || 'Untitled'}</span>
+                    <span className="truncate text-sm font-medium text-stone-800">{row.title || 'Untitled'}</span>
                   </div>
-                  <div className="mt-1 flex items-center gap-2 text-xs text-slate-400">
+                  <div className="mt-1 flex items-center gap-2 text-xs text-stone-400">
                     <span>{relativeDate(row.updated_at)}</span>
                     <span>·</span>
                     <span>{row.status === 'completed' ? 'Completed' : 'In progress'}</span>
@@ -125,13 +133,13 @@ export default function SessionHistory() {
                 <div className="flex shrink-0 items-center gap-2">
                   <span
                     onClick={(e) => remove(row, e)}
-                    className="rounded px-2 py-1 text-xs text-slate-400 hover:bg-red-50 hover:text-red-600"
+                    className="rounded px-2 py-1 text-xs text-stone-400 hover:bg-red-50 hover:text-red-600"
                     role="button"
                     tabIndex={0}
                   >
                     Delete
                   </span>
-                  <span className="text-indigo-500 group-hover:translate-x-0.5">→</span>
+                  <span className="text-terracotta-500 group-hover:transtone-x-0.5">→</span>
                 </div>
               </button>
             </li>

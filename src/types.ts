@@ -190,6 +190,24 @@ export interface ParsedJob {
   keywords: string[]
 }
 
+/** A canonical system-design problem the JD selector recommends for a company, with a domain rationale.
+ *  `problemId` references a curated library problem (src/data/sysdesign/problems.ts) — grading stays
+ *  on that problem's hand-authored hints; the selector only ranks and explains the fit. */
+export interface ProblemPick {
+  problemId: string
+  confidence: 'high' | 'medium' | 'low'
+  rationale: string
+}
+
+/** A behavioral/managerial question the JD selector recommends, mapped to a stated company value.
+ *  `promptId` references a curated bank question (src/data/prompts.ts) — STAR grading is question-
+ *  agnostic, so the bank stays the source of truth; the selector only ranks and explains the fit. */
+export interface BehavioralPick {
+  promptId: string
+  confidence: 'high' | 'medium' | 'low'
+  rationale: string
+}
+
 /** A stored target job: pasted text plus its parsed structure. */
 export interface JobDescription {
   id: string
@@ -197,6 +215,10 @@ export interface JobDescription {
   company: string
   rawText: string
   parsed: ParsedJob | null
+  /** Canonical system-design problems this JD points to (ranked), saved for practice. */
+  problemPicks: ProblemPick[]
+  /** Behavioral/managerial questions this JD points to (ranked), saved for practice. */
+  behavioralPicks: BehavioralPick[]
 }
 
 export type FitVerdict = 'strong' | 'plausible' | 'stretch' | 'mismatch'
@@ -233,4 +255,35 @@ export interface ResumeFit {
   gaps: FitGap[]
   strengths: string[]
   summary: string
+}
+
+// ---- JD-targeted resume generation (Phase 2) -----------------------------
+// A resume generated strictly from the candidate's own ground truth (stories + project facets),
+// optionally tailored to a parsed job. Every bullet carries provenance — the story or project it
+// traces to — so the grounding rule ("no invented metrics/titles/companies") stays auditable.
+
+export interface ResumeBullet {
+  text: string
+  /** Id of the source story this bullet traces to, or null. */
+  sourceStoryId: string | null
+  /** Id of the source project this bullet traces to, or null. */
+  sourceProjectId: string | null
+  /** True when the bullet was reused/tightened from the candidate's existing pasted resume. */
+  sourceResume: boolean
+  /** A real metric from the source, only if present there. */
+  metric?: string
+}
+
+export interface ResumeExperience {
+  company: string
+  role: string
+  dates: string
+  bullets: ResumeBullet[]
+}
+
+export interface GeneratedResume {
+  header: { headline: string; targetRole: string }
+  summary: string
+  skills: { category: string; items: string[] }[]
+  experience: ResumeExperience[]
 }

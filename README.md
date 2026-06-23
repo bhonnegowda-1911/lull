@@ -4,7 +4,9 @@ A personal, single-user web app to practice interviews and build the ground trut
 answers. Three practice modes — **Behavioral** (record/upload an answer → LLM-graded delivery:
 STAR, clarity, filler rate, level signal), **System Design** (staged interview + leveling
 report), and **Build** (timed prioritization coach) — plus a **Prep** hub that holds your
-resume, projects, story bank, target jobs, and a resume↔job-description fit analyzer.
+resume, projects, story bank, target jobs, a resume↔job-description fit analyzer, and a
+**JD-driven interview loop** that predicts the system-design problems and behavioral questions a
+specific company is likely to ask — then lets you practice them in one click.
 
 ## How it works (behavioral loop)
 
@@ -17,11 +19,13 @@ Recorder ─▶ blob (audio|video)
 ```
 
 - **Transcription:** OpenAI Whisper (`whisper-1`).
-- **Grading:** Claude Sonnet 4.6 with a fixed STAR rubric via structured outputs, behind a
-  provider-agnostic `llmClient` (an OpenAI adapter slot is stubbed for later).
+- **Grading:** Claude Opus 4.8 with a fixed STAR rubric via structured outputs, behind a
+  provider-agnostic `llmClient` (an OpenAI adapter slot is stubbed for later). Model selection is
+  centralized in `src/lib/models.ts`.
 - **LLM gateway:** all model calls go through the Node/Express backend (`/api/llm/*`), so your
   **OpenAI/Anthropic keys live only on the server**, never in the browser. Prompt + schema
-  construction stays client-side; the gateway just forwards.
+  construction stays client-side; the gateway just forwards — and **retries transient upstream
+  errors** (429/5xx/529 "Overloaded") with exponential backoff so a busy model doesn't fail a rep.
 
 ## Prep & job fit
 
@@ -39,6 +43,29 @@ The **Prep** hub (`/prep`) is the ground-truth tier the practice modes draw on, 
 - **Match** — score your resume against a stored job: a **fit score + structured gaps** (never a
   binary), each gap tagged *Reword* / *Add a story* / *Real gap*. Generating a JD-tailored resume
   from your projects/stories is **Phase 2** — see [`docs/PHASE2-resume-generation.md`](docs/PHASE2-resume-generation.md).
+  The Match tab also hosts the **JD-driven interview loop** (below).
+
+### JD-driven interview loop
+
+A company rarely invents a bespoke question per candidate — it reaches for a **canonical** problem
+whose complexity matches the business it runs, and probes the **values** it states. From a stored
+job the Match tab predicts both rounds, ranked with a domain/value **rationale**:
+
+- **System-design round** — ranks the curated problem library (`src/data/sysdesign/problems.ts`,
+  ~32 canonical problems: URL shortener, rate limiter, code-execution sandbox, webhook delivery,
+  Dropbox, ad-click aggregator, …) by how likely the company is to ask each. The LLM only *matches
+  and explains* — it never invents a problem or a grading key, so grading stays on each problem's
+  hand-authored hints. (e.g. an identity-security integration platform → a LeetCode-style
+  code-execution sandbox + reliable webhook delivery.)
+- **Behavioral / managerial round** — ranks the curated question bank (`src/data/prompts.ts`) by
+  the values the JD states (*"Ship, ship, ship"* → the ship-fast question; *"Build with AI"* → the
+  AI-tools question; *Compassionate Candor* → the hard-feedback question), each mapped to its
+  source value.
+
+Both selectors are **prompt + schema data** (`src/data/sysdesign/genCriteria.ts`,
+`src/data/behavioralCriteria.ts`) and return only ids from the curated catalogs. Saved plans
+persist on the job; each recommended item has a **Practice →** button that jumps straight to the
+System Design or Behavioral tab with the problem/question loaded.
 
 ## Running it
 
@@ -80,6 +107,7 @@ Vite + React + **TypeScript** (strict), Tailwind CSS, Vitest. Backend: Node/Expr
 Postgres + MinIO, a modular monolith where each feature is a router under `/api`
 (`sessions`, `assets`, `llm`, `profile`, `projects`, `stories`, `facet-drafts`, `jobs`).
 Shared domain types live in `src/types.ts`; system-design types sit next to their modules in
-`src/{data,lib}/sysdesign`. Analyzers conform to one interface and the prompts/rubrics are
-**data** (`src/data/criteria.ts`, `src/data/resumeCriteria.ts`), so swapping STAR for another
-framework — or adding the Phase-2 resume generator — needs no UI/analyzer rework.
+`src/{data,lib}/sysdesign`. Analyzers conform to one interface and the prompts/rubrics/selectors are
+**data** (`src/data/criteria.ts`, `src/data/resumeCriteria.ts`, `src/data/sysdesign/genCriteria.ts`,
+`src/data/behavioralCriteria.ts`), so swapping STAR for another framework, extending the problem
+library, or adding a JD selector needs no UI/analyzer rework.

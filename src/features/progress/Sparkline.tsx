@@ -8,19 +8,19 @@ interface Props {
   points: Point[]
   min: number
   max: number
-  /** Tailwind stroke/fill color class hue, e.g. 'indigo' | 'emerald' | 'rose'. */
-  color?: 'indigo' | 'emerald' | 'rose' | 'violet'
+  /** Tailwind stroke/fill color class hue, e.g. 'terracotta' | 'emerald' | 'rose'. */
+  color?: 'terracotta' | 'emerald' | 'rose' | 'violet'
   height?: number
 }
 
 const STROKE: Record<string, string> = {
-  indigo: 'stroke-indigo-500',
+  terracotta: 'stroke-terracotta-500',
   emerald: 'stroke-emerald-500',
   rose: 'stroke-rose-500',
   violet: 'stroke-violet-500',
 }
 const FILL: Record<string, string> = {
-  indigo: 'fill-indigo-500',
+  terracotta: 'fill-terracotta-500',
   emerald: 'fill-emerald-500',
   rose: 'fill-rose-500',
   violet: 'fill-violet-500',
@@ -28,9 +28,9 @@ const FILL: Record<string, string> = {
 
 const W = 100
 
-export default function Sparkline({ points, min, max, color = 'indigo', height = 40 }: Props) {
+export default function Sparkline({ points, min, max, color = 'terracotta', height = 40 }: Props) {
   if (points.length === 0) {
-    return <div className="text-xs text-slate-400">No data yet</div>
+    return <div className="text-xs text-stone-400">No data yet</div>
   }
 
   const span = max - min || 1

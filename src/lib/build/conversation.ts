@@ -1,5 +1,5 @@
 import { chatStructured } from '../llmClient'
-import { DEFAULT_MODEL, GRADING_TEMPERATURE } from '../models'
+import { DEFAULT_MODEL } from '../models'
 import type { BuildStage } from '../../data/build/stages'
 import type { BuildProblem } from '../../data/build/problems'
 
@@ -33,7 +33,7 @@ export interface PriorStage {
   decisions: string
 }
 
-const TURN_SCHEMA = {
+export const TURN_SCHEMA = {
   type: 'object',
   properties: {
     reply: {
@@ -183,7 +183,6 @@ export async function runBuildTurn({
     system: systemPrompt(stage, problem),
     user: buildUserMessage(transcript, message, priorStages),
     schema: TURN_SCHEMA,
-    temperature: GRADING_TEMPERATURE,
     signal,
   })
 

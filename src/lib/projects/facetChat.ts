@@ -1,5 +1,5 @@
 import { chatStructured } from '../llmClient'
-import { DEFAULT_MODEL, GRADING_TEMPERATURE } from '../models'
+import { DEFAULT_MODEL } from '../models'
 import { FACETS, facetPrompt, type FacetAnswer, type FacetId, type Project } from '../../data/projects'
 import type { BehavioralLevel, Score } from '../../types'
 
@@ -61,7 +61,7 @@ const beatSchema = (beat: string) => ({
   additionalProperties: false,
 })
 
-const SCHEMA = {
+export const SCHEMA = {
   type: 'object',
   properties: {
     beats: {
@@ -164,7 +164,6 @@ export async function facetTurn({
     user,
     schema: SCHEMA,
     maxTokens: 900,
-    temperature: GRADING_TEMPERATURE,
     signal,
   })
 
