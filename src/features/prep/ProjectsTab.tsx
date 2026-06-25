@@ -35,10 +35,9 @@ export default function ProjectsTab() {
   }
 
   async function remove(project: Project) {
-    if (!window.confirm('Delete this project? This cannot be undone.')) return
-    await deleteProject(project.id)
+    setProjects((prev) => prev.filter((p) => p.id !== project.id)) // optimistic — no prompt
     clearProjectDrafts(project.id)
-    setProjects((prev) => prev.filter((p) => p.id !== project.id))
+    await deleteProject(project.id)
   }
 
   if (editing) {

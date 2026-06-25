@@ -156,9 +156,7 @@ export default function PipelineHome() {
   }, [])
 
   async function removeJob(job: JobDescription) {
-    const name = [job.title, job.company].filter(Boolean).join(' @ ') || 'this application'
-    if (!window.confirm(`Delete ${name}? This removes the application and its loop. This can't be undone.`)) return
-    setJobs((prev) => prev.filter((j) => j.id !== job.id)) // optimistic
+    setJobs((prev) => prev.filter((j) => j.id !== job.id)) // optimistic — remove instantly, no prompt
     await deleteJob(job.id)
   }
 

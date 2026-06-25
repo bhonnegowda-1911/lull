@@ -193,10 +193,8 @@ export default function InterviewReviewView({ onNeedKeys }: { onNeedKeys?: () =>
 
   async function removeSaved(row: SessionSummary, e: React.MouseEvent) {
     e.stopPropagation()
-    if (!confirm('Delete this reviewed interview? This cannot be undone.')) return
+    setHistory((prev) => prev.filter((r) => r.id !== row.id)) // optimistic — no prompt
     await deleteSession(row.id)
-    setHistory((prev) => prev.filter((r) => r.id !== row.id))
-    if (result && row.id) void loadHistory()
   }
 
   // ---- Result view --------------------------------------------------------

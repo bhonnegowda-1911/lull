@@ -73,9 +73,8 @@ export default function StoryBank() {
   }
 
   async function remove(story: Story) {
-    if (!window.confirm('Delete this story? This cannot be undone.')) return
+    setStories((prev) => prev.filter((s) => s.id !== story.id)) // optimistic — no prompt
     await deleteStory(story.id)
-    setStories((prev) => prev.filter((s) => s.id !== story.id))
   }
 
   const drafts = stories.filter((s) => s.status === 'draft')

@@ -82,9 +82,8 @@ export default function SessionHistory() {
 
   async function remove(row: SessionSummary, e: React.MouseEvent) {
     e.stopPropagation()
-    if (!confirm('Delete this session? This cannot be undone.')) return
+    setRows((prev) => prev.filter((r) => r.id !== row.id)) // optimistic — no prompt
     await deleteSession(row.id)
-    setRows((prev) => prev.filter((r) => r.id !== row.id))
   }
 
   return (

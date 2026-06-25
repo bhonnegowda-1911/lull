@@ -54,9 +54,8 @@ export default function JobsTab() {
   }
 
   async function remove(job: JobDescription) {
-    if (!window.confirm('Delete this job description?')) return
+    setJobs((prev) => prev.filter((j) => j.id !== job.id)) // optimistic — no prompt
     await deleteJob(job.id)
-    setJobs((prev) => prev.filter((j) => j.id !== job.id))
   }
 
   const inputCls = 'w-full rounded-md border border-stone-300 px-3 py-1.5 text-sm focus:border-terracotta-500 focus:outline-none'
