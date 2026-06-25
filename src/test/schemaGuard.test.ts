@@ -10,6 +10,7 @@ import { SCHEMA as COACH_SCHEMA } from '../lib/stories/coach'
 import { GENERATE_SCHEMA as FOLLOWUPS_SCHEMA } from '../lib/followups'
 import { TURN_SCHEMA as BUILD_TURN_SCHEMA } from '../lib/build/conversation'
 import { TURN_SCHEMA as SYSDESIGN_TURN_SCHEMA } from '../lib/sysdesign/conversation'
+import { INTERVIEW_REVIEW_SCHEMA } from '../data/interviewReviewCriteria'
 
 // Anthropic's structured-output json_schema rejects numeric range keywords (minimum/maximum/…) at
 // request time with a 400. This walks every LLM schema in the app and fails the build if one slips
@@ -28,6 +29,7 @@ const ALL_SCHEMAS: Record<string, unknown> = {
   FOLLOWUPS_SCHEMA,
   BUILD_TURN_SCHEMA,
   SYSDESIGN_TURN_SCHEMA,
+  INTERVIEW_REVIEW_SCHEMA,
 }
 
 describe('LLM schemas use only keywords Anthropic structured output supports', () => {

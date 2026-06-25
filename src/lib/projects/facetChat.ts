@@ -1,5 +1,5 @@
 import { chatStructured } from '../llmClient'
-import { DEFAULT_MODEL } from '../models'
+import { GEN_MODEL } from '../models'
 import { FACETS, facetPrompt, type FacetAnswer, type FacetId, type Project } from '../../data/projects'
 import type { BehavioralLevel, Score } from '../../types'
 
@@ -159,7 +159,7 @@ export async function facetTurn({
 
   const { parsed } = await chatStructured<RawTurn>({
     provider: 'anthropic',
-    model: DEFAULT_MODEL,
+    model: GEN_MODEL,
     system: system(facet.label, targetLevel),
     user,
     schema: SCHEMA,

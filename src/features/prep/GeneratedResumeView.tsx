@@ -28,6 +28,7 @@ export default function GeneratedResumeView({
   const [draftScore, setDraftScore] = useState<number | null>(null)
   const [scoreError, setScoreError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   // Lookups so a bullet's source id resolves to a human label for its chip.
   const storyTitle = useMemo(() => new Map(stories.map((s) => [s.id, s.title || 'Untitled story'])), [stories])
@@ -61,6 +62,22 @@ export default function GeneratedResumeView({
     }
   }
 
+  // One-click PDF download via @react-pdf/renderer (real, selectable, ATS-friendly text). The renderer
+  // is heavy, so it's lazy-loaded on first use to keep it out of the main bundle.
+  async function exportPdf() {
+    if (exporting) return
+    setExporting(true)
+    setScoreError(null)
+    try {
+      const { downloadResumePdf } = await import('../../lib/resume/pdf')
+      await downloadResumePdf(resume)
+    } catch (e) {
+      setScoreError(e instanceof Error ? e.message : 'Could not export the PDF.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   const delta = draftScore != null && baselineFitScore != null ? draftScore - baselineFitScore : null
 
   return (
@@ -88,6 +105,14 @@ export default function GeneratedResumeView({
           >
             {copied ? 'Copied!' : 'Copy markdown'}
           </button>
+          <button
+            type="button"
+            onClick={() => void exportPdf()}
+            disabled={exporting}
+            className="rounded-md border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+          >
+            {exporting ? 'Exporting…' : 'Download PDF'}
+          </button>
         </div>
       </div>
 
@@ -107,8 +132,9 @@ export default function GeneratedResumeView({
 
       {/* Header + summary */}
       <div>
-        <p className="text-base font-semibold text-stone-900">{resume.header.headline}</p>
-        {resume.header.targetRole && <p className="text-xs uppercase tracking-wide text-stone-400">{resume.header.targetRole}</p>}
+        <p className="text-base font-semibold text-stone-900">{resume.header.name || 'Your name'}</p>
+        {resume.header.title && <p className="text-xs uppercase tracking-wide text-stone-400">{resume.header.title}</p>}
+        {resume.header.contact && <p className="text-xs text-stone-500">{resume.header.contact}</p>}
         {resume.summary && <p className="mt-2 text-sm text-stone-700">{resume.summary}</p>}
       </div>
 

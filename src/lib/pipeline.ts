@@ -3,7 +3,7 @@ import { makeLlmAnalyzer } from './analyzers/llmAnalyzer'
 import { DEFAULT_CRITERIA, type Criteria } from '../data/criteria'
 import type { Story } from '../data/stories'
 import type { Project } from '../data/projects'
-import type { AnalyzerContext, FillerAnalyzerResult, LlmAnalyzerResult, Transcript } from '../types'
+import type { AnalyzerContext, FillerAnalyzerResult, LlmAnalyzerResult, ParsedJob, Transcript } from '../types'
 
 // Orchestrates the two analyzers. Filler analysis runs first (local, instant, free) and
 // its result is injected into the LLM context so the coaching can reference it — one LLM
@@ -12,6 +12,8 @@ import type { AnalyzerContext, FillerAnalyzerResult, LlmAnalyzerResult, Transcri
 // Coaching mode passes the candidate's matched true `stories`; the grader then critiques content
 // (undersold impact, "we" vs "I", a stronger example) on top of delivery. Interview mode omits
 // them, so the grade is the interviewer's read with no ground-truth leakage.
+// When a target `job` is attached (either mode), the grader also rates the answer's fit to that
+// company/JD bar — which JD must-haves it hit/missed, which company values it signaled.
 
 export type PipelineStage = 'fillers' | 'analyzing'
 
@@ -22,6 +24,8 @@ export interface PipelineInput {
   fillers?: string[]
   stories?: Story[]
   projects?: Project[]
+  /** When set: grade the answer's fit to this company/JD bar, on top of the STAR grade. */
+  job?: ParsedJob | null
   signal?: AbortSignal
   onProgress?: (stage: PipelineStage) => void
 }
@@ -33,6 +37,7 @@ export async function runPipeline({
   fillers,
   stories,
   projects,
+  job,
   signal,
   onProgress = () => {},
 }: PipelineInput): Promise<{ filler: FillerAnalyzerResult; llm: LlmAnalyzerResult }> {
@@ -43,6 +48,7 @@ export async function runPipeline({
     fillers,
     stories,
     projects,
+    job,
     signal,
   }
 

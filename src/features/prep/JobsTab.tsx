@@ -4,7 +4,8 @@ import { parseJobDescription } from '../../lib/resume/parseJob'
 import type { JobDescription } from '../../types'
 
 // The Jobs tab: paste a target job description; we parse it once into structure (skills, seniority,
-// ATS keywords) and store it. Stored jobs are what the Match tab scores your resume against.
+// ATS keywords) and store it. Each stored job becomes an application on the Pipeline, where its
+// journey scores your resume, tailors one, and plans the interview loop.
 
 export default function JobsTab() {
   const [jobs, setJobs] = useState<JobDescription[]>([])
@@ -94,7 +95,7 @@ export default function JobsTab() {
       {loading ? (
         <p className="text-sm text-stone-500">Loading…</p>
       ) : jobs.length === 0 ? (
-        <p className="text-sm text-stone-500">No job descriptions yet. Paste one above to measure your resume against it on the Match tab.</p>
+        <p className="text-sm text-stone-500">No job descriptions yet. Paste one above — it becomes an application on the Pipeline.</p>
       ) : (
         <ul className="space-y-2">
           {jobs.map((j) => (

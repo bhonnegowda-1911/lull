@@ -187,32 +187,82 @@ WRITING: each bullet is an impact statement — strong action verb + what YOU di
 outcome when a source gives one. Prefer the candidate's "i"/owned work over "we". Group bullets under
 the role (company/title/dates) they belong to, taken from the candidate's roles or their resume.
 
+SUMMARY (non-negotiable — START FROM THE CANDIDATE'S OWN): the candidate's EXISTING RESUME almost always
+opens with a summary/profile/objective/about paragraph (the prose block near the top, before the skills
+or experience sections). FIND IT AND REUSE IT as the basis: keep the candidate's own wording, voice, and
+sentence structure, and change as little as possible. Their summary is the gold standard — do not "improve"
+it, do not rephrase it into your own words, do not restructure it. The most common failure is throwing away
+a perfectly good human-written summary and replacing it with a generic synthesized one; do NOT do that.
+  • When a TARGET JOB is provided, you may make light edits ONLY — reorder a clause, swap in a JD-relevant
+    word the candidate already demonstrates, trim a phrase — so the existing summary leans toward that role.
+    Preserve the candidate's voice; never rewrite it wholesale. Never inflate to fit the JD.
+  • Only if the EXISTING RESUME genuinely has no summary paragraph should you write one from scratch. In that
+    case: 2–3 short, plain-English sentences a real person would say out loud, NOT a marketing tagline —
+    open with the candidate's real title + years, name at most ONE or TWO concrete accomplishments from the
+    sources, close with the thread tying their work together. Each sentence stands alone (no comma-and-em-dash
+    run-ons). BAN buzzword stacking ("production-grade, high-scale systems", "0 to 1", "battle-tested"),
+    empty self-praise ("strong instincts", "passionate", "results-driven", "deep expertise"), and dumping the
+    tech stack (the skills section already lists tools). Read it aloud; if it sounds like a LinkedIn headline,
+    rewrite it until it sounds like the candidate calmly describing what they actually do.
+
+SKILLS (non-negotiable): reproduce the candidate's OWN skills section from their EXISTING RESUME —
+keep their exact category names, their grouping, and which skills sit under each, VERBATIM. Do NOT
+re-categorize, rename or invent categories, merge or split groups, or list any skill under more than
+one category. When tailoring you may reorder so JD-relevant categories/skills come first, but never
+change the categorization itself. Only if the existing resume has no grouped skills should you create
+sensible groups yourself.
+
+AI-ASSISTED CODING (non-negotiable): the candidate uses Claude for AI-assisted coding, and EVERY
+generated resume MUST surface this. This is the one sanctioned exception to the verbatim-skills rule:
+add "Claude (AI-assisted coding)" as a skill. Place it ONLY under a category where it genuinely
+belongs — an existing AI / developer-tools / developer-productivity / dev-tooling group. Do NOT shove
+it into an unrelated category just because that category exists (e.g. never put it under Observability,
+Languages, Databases, Cloud, etc.). If no clearly appropriate category exists, CREATE a small dedicated
+one such as "AI / Developer Tools" and put it there. Keep it factual and unembellished — never inflate
+it into a metric or accomplishment.
+
 TAILORING: when a TARGET JOB is provided, prioritize and phrase the bullets, summary, and skills to
 echo its must-have requirements and ATS keywords — but ONLY using real experience from the sources.
 Never claim a skill the sources don't support. When no job is provided, write a strong generic resume.
 
-Output a header (a one-line headline + the target role), a 1-2 sentence summary, grouped skills, and
-experience grouped by role with grounded bullets.`,
+IDENTITY & CONTACT (non-negotiable): copy the candidate's real NAME and CONTACT details — email,
+phone, location, and links like LinkedIn/GitHub — VERBATIM from the EXISTING RESUME into the header.
+Never invent or alter them; if the resume has none, leave the field an empty string. The header
+"title" is the candidate's OWN current/most-recent professional title taken from their EXISTING RESUME
+(or roles) — NOT a marketing tagline and NOT derived from the target job. The identity header is fixed
+to who they are; tailoring changes ONLY the summary, skills, and bullet content — never the header.
+
+Output a header (name + title + a single contact line), a 2–3 sentence summary (per the SUMMARY rules
+above), grouped skills, and experience grouped by role with grounded bullets.`,
   schema: {
     type: 'object',
     properties: {
       header: {
         type: 'object',
         properties: {
-          headline: { type: 'string', description: 'One-line positioning headline.' },
-          targetRole: { type: 'string', description: 'The role this resume targets.' },
+          name: { type: 'string', description: "The candidate's full name, copied verbatim from the EXISTING RESUME. Empty string if absent." },
+          title: { type: 'string', description: "The candidate's own current/most-recent professional title, from the EXISTING RESUME or roles. NOT the target job's title and NOT a tagline. Empty string if absent." },
+          contact: {
+            type: 'string',
+            description:
+              'A single contact line copied from the EXISTING RESUME — email, phone, location, and links (LinkedIn/GitHub) joined by " · ". Empty string if none are present. Never invent contact details.',
+          },
         },
-        required: ['headline', 'targetRole'],
+        required: ['name', 'title', 'contact'],
         additionalProperties: false,
       },
-      summary: { type: 'string', description: '1-2 sentence professional summary, grounded in the sources.' },
+      summary: {
+        type: 'string',
+        description:
+          "REUSE the candidate's own summary/profile paragraph from their EXISTING RESUME, keeping their wording and voice with only light JD tailoring. Write one from scratch ONLY if the resume has none. See the SUMMARY rules in the system prompt.",
+      },
       skills: {
         type: 'array',
         items: {
           type: 'object',
           properties: {
-            category: { type: 'string', description: 'e.g. Languages, Infrastructure, Domains.' },
-            items: { type: 'array', items: { type: 'string' } },
+            category: { type: 'string', description: "A skill category copied VERBATIM from the candidate's existing resume — do not rename or invent categories." },
+            items: { type: 'array', description: 'Skills under that category, exactly as the candidate groups them. Each skill appears under only ONE category (no duplication).', items: { type: 'string' } },
           },
           required: ['category', 'items'],
           additionalProperties: false,

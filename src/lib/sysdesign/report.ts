@@ -1,5 +1,6 @@
 import { chatStructured } from '../llmClient'
 import { REPORT_MODEL } from '../models'
+import { TARGET_LEVEL_LABEL, type TargetLevel } from '../interview/persona'
 import { STAGES, LEVELS, type SysDesignLevel } from '../../data/sysdesign/stages'
 import type { Problem } from '../../data/sysdesign/problems'
 import type { Coverage, Turn } from './conversation'
@@ -41,12 +42,27 @@ export interface ReferenceSolution {
   perStage: Array<{ stageId: string; points: string[] }>
 }
 
+/** Time/space complexity read for the candidate's final solution vs the optimal. Optional on the
+ *  shared report — only the coding mode produces it (system design / build leave it undefined). */
+export interface ComplexityAnalysis {
+  optimalTime: string
+  optimalSpace: string
+  achievedTime: string
+  achievedSpace: string
+  /** Whether the candidate's solution reached the optimal time AND space complexity. */
+  matchedOptimal: boolean
+  /** One or two sentences on the candidate's complexity and whether they justified it correctly. */
+  analysis: string
+}
+
 export interface SysDesignReport {
   overall: ReportOverall
   perStage: ReportStage[]
   toReachHigher: ReportGuidance[]
   topPriorities: ReportPriority[]
   referenceSolution: ReferenceSolution
+  /** Coding-mode only: time/space complexity analysis of the implemented solution. */
+  complexity?: ComplexityAnalysis
 }
 
 export interface StageSessionInput {
@@ -152,7 +168,14 @@ export const REPORT_SCHEMA = {
   additionalProperties: false,
 }
 
-function systemPrompt(problem: Problem): string {
+// The candidate told us which level they're targeting. We do NOT grade toward it (the demonstrated
+// level must stay honest), but it lets the report aim its improvement guidance at the right rung.
+function targetLine(targetLevel?: TargetLevel): string {
+  if (!targetLevel) return ''
+  return `\nThe candidate is interviewing for a ${TARGET_LEVEL_LABEL[targetLevel]}-level role. Grade the level the performance ACTUALLY demonstrates — do not grade toward the target — but focus your improvement guidance on what would get them to the ${TARGET_LEVEL_LABEL[targetLevel]} bar.\n`
+}
+
+function systemPrompt(problem: Problem, targetLevel?: TargetLevel): string {
   const rubric = STAGES.map(
     (s) =>
       `### ${s.label} (id: ${s.id})\n- Mid: ${s.levelRubric.mid}\n- Senior: ${s.levelRubric.senior}\n- Staff: ${s.levelRubric.staff}`,
@@ -163,7 +186,7 @@ performed across a whole interview and infer the LEVEL the performance signals: 
 senior, or staff. Judge by scope of thinking, prioritization, tradeoff reasoning, and how
 proactively they drove the design — NOT by buzzwords. This is the level the PERFORMANCE
 demonstrates, not a verdict on the person.
-
+${targetLine(targetLevel)}
 THE PROBLEM:
 ${problem.statement}
 
@@ -192,8 +215,17 @@ strong candidate would cover at each stage and the crux of the design. Write it 
 merits as a learning aid, not as a critique of this candidate.`
 }
 
-function buildUserMessage(stageSessions: StageSessionInput[]): string {
+function buildUserMessage(stageSessions: StageSessionInput[], hasWhiteboard = false): string {
   const lines: string[] = []
+  if (hasWhiteboard) {
+    lines.push(
+      "The attached image is the candidate's whiteboard for this design. Grade it as part of their",
+      'answer — what the diagram shows (components, data flow, labels) is design signal alongside the',
+      'transcript. Reward a clear, correct diagram; note gaps or contradictions between it and what',
+      'they said.',
+      '',
+    )
+  }
   for (const s of stageSessions) {
     lines.push(`=== STAGE: ${s.label} (id: ${s.stageId})${s.skipped ? ' — SKIPPED' : ''} ===`)
     if (s.skipped) {
@@ -216,6 +248,10 @@ function buildUserMessage(stageSessions: StageSessionInput[]): string {
 export interface GenerateReportArgs {
   problem: Problem
   stageSessions: StageSessionInput[]
+  /** Role level the candidate is targeting — calibrates the report's improvement guidance. */
+  targetLevel?: TargetLevel
+  /** Base64 PNG of the candidate's final whiteboard, graded as part of the design. */
+  whiteboardImage?: string | null
   model?: string
   signal?: AbortSignal
 }
@@ -224,6 +260,8 @@ export interface GenerateReportArgs {
 export async function generateReport({
   problem,
   stageSessions,
+  targetLevel,
+  whiteboardImage = null,
   model = REPORT_MODEL,
   signal,
 }: GenerateReportArgs): Promise<SysDesignReport> {
@@ -233,8 +271,9 @@ export async function generateReport({
   const { parsed } = await chatStructured<SysDesignReport>({
     provider: 'anthropic',
     model,
-    system: systemPrompt(problem),
-    user: buildUserMessage(stageSessions),
+    system: systemPrompt(problem, targetLevel),
+    user: buildUserMessage(stageSessions, Boolean(whiteboardImage)),
+    images: whiteboardImage ? [whiteboardImage] : undefined,
     schema: REPORT_SCHEMA,
     maxTokens: 12000,
     thinking: 'adaptive',

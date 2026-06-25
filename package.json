@@ -1,5 +1,5 @@
 {
-  "name": "delivery-coach",
+  "name": "lull",
   "private": true,
   "version": "0.1.0",
   "type": "module",
@@ -16,6 +16,17 @@
     "server:install": "npm --prefix server install"
   },
   "dependencies": {
+    "@codemirror/lang-cpp": "^6.0.3",
+    "@codemirror/lang-java": "^6.0.2",
+    "@codemirror/lang-javascript": "^6.2.5",
+    "@codemirror/lang-python": "^6.2.1",
+    "@excalidraw/excalidraw": "^0.18.1",
+    "@react-pdf/renderer": "^4.5.1",
+    "@types/canvas-confetti": "^1.9.0",
+    "@uiw/react-codemirror": "^4.25.10",
+    "canvas-confetti": "^1.9.4",
+    "framer-motion": "^12.41.0",
+    "lucide-react": "^1.21.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-router-dom": "^6.28.0"

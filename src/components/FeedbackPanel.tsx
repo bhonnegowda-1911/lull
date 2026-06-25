@@ -3,6 +3,7 @@ import type {
   DetailTendency,
   Feedback,
   FeedbackBeat,
+  JobFit as JobFitData,
   LevelSignal as LevelSignalData,
   Severity,
   StoryFidelity as StoryFidelityData,
@@ -231,13 +232,45 @@ function StoryFidelity({ fidelity }: { fidelity: StoryFidelityData | null }) {
   )
 }
 
+function JobFit({ fit }: { fit: JobFitData | null }) {
+  if (!fit) return null
+  const groups: Array<{ label: string; items: string[] }> = [
+    { label: 'Evidenced for this role', items: fit.mustHavesHit || [] },
+    { label: 'Missing for this role', items: fit.mustHavesMissed || [] },
+    { label: 'Company values you signaled', items: fit.valuesSignaled || [] },
+  ].filter((g) => g.items.length > 0)
+
+  return (
+    <div className="rounded-xl border border-sky-200 bg-sky-50 p-5 shadow-sm">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-sky-900">Fit for {fit.company || 'this role'}</h3>
+        <span className="rounded-full bg-sky-600 px-3 py-0.5 text-xs font-semibold text-white">{fit.score}/5 fit</span>
+      </div>
+      <p className="mt-0.5 text-xs text-sky-500">How this answer lands for the target company and JD.</p>
+      {fit.note && <p className="mt-3 text-sm text-sky-900/90">{fit.note}</p>}
+
+      {groups.map((g) => (
+        <div key={g.label} className="mt-3">
+          <div className="text-xs font-semibold uppercase tracking-wide text-sky-700">{g.label}</div>
+          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-sm text-sky-900/85">
+            {g.items.map((it, i) => (
+              <li key={i}>{it}</li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export default function FeedbackPanel({ feedback }: { feedback: Feedback | null }) {
   if (!feedback) return null
-  const { conforms, summary, scores, level, habits, beats, filler, notes, storyFidelity } = feedback
+  const { conforms, summary, scores, level, habits, beats, filler, notes, storyFidelity, jobFit } = feedback
 
   return (
     <div className="space-y-5">
       <LevelSignal level={level} />
+      <JobFit fit={jobFit} />
       <StoryFidelity fidelity={storyFidelity} />
       <DeliveryHabits habits={habits} />
       <div className="rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-5 shadow-sm">

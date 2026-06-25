@@ -15,7 +15,7 @@ import { summarizeGame, type GameStat } from './game'
 // metrics across reps: level over time for every mode, plus delivery metrics (filler rate,
 // STAR scores) for behavioral. Read-only; data comes from the durable session store.
 
-const KIND_LABEL: Record<string, string> = { behavioral: 'Behavioral', sysdesign: 'System design', build: 'Build' }
+const KIND_LABEL: Record<string, string> = { behavioral: 'Behavioral', coding: 'Coding', sysdesign: 'System design', build: 'Build' }
 
 function arrow(dir: Direction): { glyph: string; cls: string; label: string } {
   if (dir === 'up') return { glyph: '↑', cls: 'text-emerald-400', label: 'improving' }

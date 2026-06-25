@@ -107,12 +107,40 @@ CREATE TABLE IF NOT EXISTS job_descriptions (
 );
 CREATE INDEX IF NOT EXISTS jobs_updated_idx ON job_descriptions (updated_at DESC);
 
+-- User-generated, on-demand interview problems (coding + system design). Unlike the curated library
+-- (which lives in client code), these are authored at runtime by the LLM and carry their own grading
+-- hints, so the whole problem is stored as a jsonb payload. The kind column separates the two modes;
+-- id is a title-derived slug (text, not uuid). Durable copy of the on-device localStorage cache.
+CREATE TABLE IF NOT EXISTS custom_problems (
+  id         text PRIMARY KEY,
+  kind       text NOT NULL,
+  payload    jsonb NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS custom_problems_kind_idx ON custom_problems (kind);
+
 -- Canonical system-design problems this JD points to (ranked picks referencing the curated library).
 ALTER TABLE job_descriptions ADD COLUMN IF NOT EXISTS problem_picks jsonb NOT NULL DEFAULT '[]';
+-- Canonical coding/DSA problems this JD points to (ranked picks referencing the curated coding bank).
+ALTER TABLE job_descriptions ADD COLUMN IF NOT EXISTS coding_picks jsonb NOT NULL DEFAULT '[]';
 -- Behavioral/managerial questions this JD points to (ranked picks referencing the curated bank).
 ALTER TABLE job_descriptions ADD COLUMN IF NOT EXISTS behavioral_picks jsonb NOT NULL DEFAULT '[]';
 -- Recruiter-screen questions this JD points to (ranked picks referencing the curated bank).
 ALTER TABLE job_descriptions ADD COLUMN IF NOT EXISTS recruiter_picks jsonb NOT NULL DEFAULT '[]';
+-- Application pipeline (status, scheduled rounds, decision) and the countdown prep plan. Nullable
+-- jsonb: an untracked job has neither.
+ALTER TABLE job_descriptions ADD COLUMN IF NOT EXISTS application jsonb;
+ALTER TABLE job_descriptions ADD COLUMN IF NOT EXISTS prep_plan jsonb;
+
+-- The single, cross-application prep plan generated from all active interviews at once. One row
+-- ('default'), like profile — a user_id column is the documented future scoping point. Distinct from
+-- the legacy per-round job_descriptions.prep_plan column above; that one is no longer written.
+CREATE TABLE IF NOT EXISTS prep_plan (
+  id         text PRIMARY KEY DEFAULT 'default',
+  payload    jsonb,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
 `
 
 /** Create tables if they don't exist. No migration tool yet — additive DDL only. */

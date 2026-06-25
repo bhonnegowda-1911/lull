@@ -1,22 +1,36 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { MessageSquare, Code2, Network, Hammer, Mic, ArrowRight, Trash2, type LucideIcon } from 'lucide-react'
 import { listSessions, getSession, deleteSession, type SessionKind, type SessionSummary } from '../../lib/sessionStore'
+import { stagger, staggerItem } from '../../lib/ui/motion'
 import EmptyState from '../../components/EmptyState'
 
-// Cross-mode history of every past session (behavioral, system-design, and future kinds).
-// Opening a row loads the full record and hands it to the matching feature route via router
-// state, which hydrates it (resume an in-progress interview, or view a completed result).
+// Cross-mode history of completed sessions (behavioral, system-design, and future kinds).
+// In-progress runs are excluded — only completed sessions are listed. Opening a row loads
+// the full record and hands it to the matching feature route via router state to view it.
 
-const KIND_LABEL: Record<string, string> = { behavioral: 'Behavioral', sysdesign: 'System design', build: 'Build' }
+const KIND_LABEL: Record<string, string> = { behavioral: 'Behavioral', coding: 'Coding', sysdesign: 'System design', build: 'Build', interview_review: 'Interview review' }
 const ROUTE_FOR: Record<string, string> = {
-  behavioral: '/interview/behavioral',
-  sysdesign: '/interview/sysdesign',
-  build: '/interview/build',
+  behavioral: '/practice/behavioral',
+  coding: '/practice/coding',
+  sysdesign: '/practice/sysdesign',
+  build: '/practice/build',
+  interview_review: '/review',
 }
 const KIND_BADGE: Record<string, string> = {
   behavioral: 'bg-terracotta-100 text-terracotta-700',
+  coding: 'bg-sky-100 text-sky-700',
   sysdesign: 'bg-emerald-100 text-emerald-700',
   build: 'bg-violet-100 text-violet-700',
+  interview_review: 'bg-amber-100 text-amber-700',
+}
+const KIND_ICON: Record<string, LucideIcon> = {
+  behavioral: MessageSquare,
+  coding: Code2,
+  sysdesign: Network,
+  build: Hammer,
+  interview_review: Mic,
 }
 
 function relativeDate(iso: string): string {
@@ -35,8 +49,10 @@ function relativeDate(iso: string): string {
 const FILTERS: Array<{ value: SessionKind | 'all'; label: string }> = [
   { value: 'all', label: 'All' },
   { value: 'behavioral', label: 'Behavioral' },
+  { value: 'coding', label: 'Coding' },
   { value: 'sysdesign', label: 'System design' },
   { value: 'build', label: 'Build' },
+  { value: 'interview_review', label: 'Interview review' },
 ]
 
 export default function SessionHistory() {
@@ -47,7 +63,8 @@ export default function SessionHistory() {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const data = await listSessions(filter === 'all' ? {} : { kind: filter })
+    // Past sessions shows only completed runs (in-progress sessions are excluded).
+    const data = await listSessions(filter === 'all' ? { status: 'completed' } : { status: 'completed', kind: filter })
     setRows(data)
     setLoading(false)
   }, [filter])
@@ -103,48 +120,65 @@ export default function SessionHistory() {
           description="Complete a behavioral or system-design session and it’ll show up here. (Durable history needs the backend running — see the README.)"
         />
       ) : (
-        <ul className="mt-4 space-y-2">
-          {rows.map((row) => (
-            <li key={row.id}>
-              <button
-                type="button"
-                onClick={() => open(row)}
-                className="group flex w-full items-center justify-between gap-3 rounded-lg border border-stone-200 p-3 text-left hover:border-terracotta-300 hover:bg-terracotta-50/40"
-              >
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${KIND_BADGE[row.kind] || 'bg-stone-100 text-stone-600'}`}>
-                      {KIND_LABEL[row.kind] || row.kind}
-                    </span>
-                    <span className="truncate text-sm font-medium text-stone-800">{row.title || 'Untitled'}</span>
-                  </div>
-                  <div className="mt-1 flex items-center gap-2 text-xs text-stone-400">
-                    <span>{relativeDate(row.updated_at)}</span>
-                    <span>·</span>
-                    <span>{row.status === 'completed' ? 'Completed' : 'In progress'}</span>
-                    {row.level && (
-                      <>
-                        <span>·</span>
-                        <span className="capitalize">{row.level}</span>
-                      </>
+        <motion.ul variants={stagger} initial="hidden" animate="show" className="mt-4 space-y-2">
+          {rows.map((row) => {
+            const Icon = KIND_ICON[row.kind]
+            return (
+              <motion.li key={row.id} variants={staggerItem}>
+                <button
+                  type="button"
+                  onClick={() => open(row)}
+                  className="group flex w-full items-center justify-between gap-3 rounded-lg border border-stone-200 p-3 text-left transition-colors hover:border-terracotta-300 hover:bg-terracotta-50/40"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    {Icon && (
+                      <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg ${KIND_BADGE[row.kind] || 'bg-stone-100 text-stone-600'}`}>
+                        <Icon size={16} aria-hidden />
+                      </span>
                     )}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="truncate text-sm font-medium text-stone-800">{row.title || 'Untitled'}</span>
+                        {row.status === 'completed' && (
+                          <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">Done</span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 flex items-center gap-2 text-xs text-stone-400">
+                        <span>{KIND_LABEL[row.kind] || row.kind}</span>
+                        <span>·</span>
+                        <span>{relativeDate(row.updated_at)}</span>
+                        {row.status !== 'completed' && (
+                          <>
+                            <span>·</span>
+                            <span className="text-amber-600">In progress</span>
+                          </>
+                        )}
+                        {row.level && (
+                          <>
+                            <span>·</span>
+                            <span className="capitalize">{row.level}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <span
-                    onClick={(e) => remove(row, e)}
-                    className="rounded px-2 py-1 text-xs text-stone-400 hover:bg-red-50 hover:text-red-600"
-                    role="button"
-                    tabIndex={0}
-                  >
-                    Delete
-                  </span>
-                  <span className="text-terracotta-500 group-hover:transtone-x-0.5">→</span>
-                </div>
-              </button>
-            </li>
-          ))}
-        </ul>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <span
+                      onClick={(e) => remove(row, e)}
+                      className="grid h-7 w-7 place-items-center rounded text-stone-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Delete session"
+                    >
+                      <Trash2 size={14} aria-hidden />
+                    </span>
+                    <ArrowRight size={16} className="text-terracotta-400 transition-transform group-hover:translate-x-0.5 group-hover:text-terracotta-600" aria-hidden />
+                  </div>
+                </button>
+              </motion.li>
+            )
+          })}
+        </motion.ul>
       )}
     </div>
   )

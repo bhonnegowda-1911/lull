@@ -4,7 +4,7 @@ import { toFacets, type FacetAnswer, type FacetId, type Project } from '../data/
 // when the backend is unreachable; writes resolve to a boolean. Maps snake_case columns to the
 // camelCase domain Project.
 
-const BASE = import.meta.env.VITE_API_BASE ?? ''
+import { API_BASE as BASE } from './api'
 
 interface ProjectRow {
   id: string

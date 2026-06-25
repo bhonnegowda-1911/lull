@@ -1,5 +1,5 @@
 import { chatStructured } from '../llmClient'
-import { DEFAULT_MODEL } from '../models'
+import { FAST_MODEL } from '../models'
 import { STORY_THEMES, type StoryDraft } from '../../data/stories'
 import type { Transcript } from '../../types'
 
@@ -82,7 +82,7 @@ export async function extractStory({
 
   const { parsed } = await chatStructured<StoryDraft>({
     provider: 'anthropic',
-    model: DEFAULT_MODEL,
+    model: FAST_MODEL,
     system: SYSTEM,
     user,
     schema: SCHEMA,

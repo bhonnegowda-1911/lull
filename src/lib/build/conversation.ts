@@ -142,7 +142,10 @@ function priorContextSection(priorStages: PriorStage[]): string {
   return lines.join('\n')
 }
 
-function buildUserMessage(transcript: Turn[], latest: string, priorStages: PriorStage[]): string {
+// Stable, reused leading portion of the user turn (prior-stage context + transcript so far). The
+// gateway caches it so turns after the first within a stage re-read it cheaply. The volatile latest
+// message is sent separately.
+function buildCachePrefix(transcript: Turn[], priorStages: PriorStage[]): string {
   const lines: string[] = []
   const prior = priorContextSection(priorStages)
   if (prior) lines.push(prior)
@@ -153,7 +156,6 @@ function buildUserMessage(transcript: Turn[], latest: string, priorStages: Prior
     }
     lines.push('')
   }
-  lines.push(`CANDIDATE (just now): ${latest}`)
   return lines.join('\n')
 }
 
@@ -181,7 +183,8 @@ export async function runBuildTurn({
     provider: 'anthropic',
     model,
     system: systemPrompt(stage, problem),
-    user: buildUserMessage(transcript, message, priorStages),
+    cachePrefix: buildCachePrefix(transcript, priorStages),
+    user: `CANDIDATE (just now): ${message}`,
     schema: TURN_SCHEMA,
     signal,
   })

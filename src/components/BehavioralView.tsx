@@ -7,7 +7,10 @@ import { runPipeline } from '../lib/pipeline'
 import { buildFeedback } from '../lib/feedback'
 import { generateFollowups, type Followup } from '../lib/followups'
 import { saveSession, type SessionRecord } from '../lib/sessionStore'
+import { celebrateBig } from '../lib/ui/celebrate'
+import { track } from '../lib/metrics/events'
 import { getProfile } from '../lib/profileStore'
+import { getJob } from '../lib/jobStore'
 import { listStories, saveStory } from '../lib/storyStore'
 import { listProjects } from '../lib/projectStore'
 import { matchStories } from '../lib/stories/match'
@@ -21,7 +24,7 @@ import FeedbackPanel from './FeedbackPanel'
 import FollowUpAnswers from './FollowUpAnswers'
 import FocusTargets from './FocusTargets'
 import RealismChecklist from './RealismChecklist'
-import type { Session, Transcript } from '../types'
+import type { InterviewerPersona, ParsedJob, Session, Transcript } from '../types'
 
 // Behavioral practice: record the main answer → transcribe → the interviewer asks tailored
 // follow-ups, which you also answer → THEN the whole conversation (main answer + every follow-up
@@ -161,6 +164,15 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
   const [promptId, setPromptId] = useState(DEFAULT_PROMPT.id)
   const [mode, setMode] = useState<BehavioralMode>('interview')
   const [profile, setProfile] = useState<Profile>(DEFAULT_PROFILE)
+  // The target job this practice was launched for (from a round's plan), or null for open practice.
+  // When set, grading also rates the answer's fit to that company/JD bar.
+  const [targetJob, setTargetJob] = useState<ParsedJob | null>(null)
+  // Who's running this round — shapes the follow-ups. A recruiter never asks technical questions.
+  // Defaults to a hiring manager (open practice from the nav, unchanged from before).
+  const [persona, setPersona] = useState<InterviewerPersona>('hiring_manager')
+  // First-hand intel about this interviewer (the round's notes) — biases the follow-ups toward
+  // what they actually focus on. Empty for open practice.
+  const [interviewerContext, setInterviewerContext] = useState('')
   const abortRef = useRef<AbortController | null>(null)
   const location = useLocation()
 
@@ -168,6 +180,17 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
   useEffect(() => {
     getProfile().then(setProfile)
   }, [])
+
+  // Celebrate a freshly graded answer (grading → done). Guarded by the prior phase so reopening a
+  // past session from History (which hydrates straight into 'done') doesn't re-fire the confetti.
+  const prevPhaseRef = useRef(state.phase)
+  useEffect(() => {
+    if (state.phase === 'done' && prevPhaseRef.current === 'grading') {
+      celebrateBig()
+      track('session_completed', { kind: 'behavioral', level: state.session?.feedback?.level?.level ?? null })
+    }
+    prevPhaseRef.current = state.phase
+  }, [state.phase])
 
   // Reopen a past session passed from History via router state.
   const resume = (location.state as { session?: SessionRecord<BehavioralPayload> } | null)?.session
@@ -186,14 +209,24 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
   }, [resume?.id])
 
   // Pre-select a question chosen from a target job's plan (Prep → Match → Practice), ready to record.
-  const startPromptId = (location.state as { startPromptId?: string } | null)?.startPromptId
+  // The plan also passes the job id so grading can rate fit to that company/JD bar.
+  const navState = location.state as
+    | { startPromptId?: string; jobId?: string; persona?: InterviewerPersona; interviewerContext?: string }
+    | null
+  const startPromptId = navState?.startPromptId
+  const startJobId = navState?.jobId
+  const startPersona = navState?.persona
+  const startInterviewerContext = navState?.interviewerContext
   useEffect(() => {
     if (!startPromptId) return
     setPromptId(startPromptId)
     dispatch({ type: 'RESET' })
+    setPersona(startPersona ?? 'hiring_manager')
+    setInterviewerContext(startInterviewerContext ?? '')
+    if (startJobId) void getJob(startJobId).then((j) => setTargetJob(j?.parsed ?? null))
     window.history.replaceState({}, '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startPromptId])
+  }, [startPromptId, startJobId, startPersona, startInterviewerContext])
 
   const prompt = PROMPTS.find((p) => p.id === promptId) || DEFAULT_PROMPT
   const busy = state.phase === 'transcribing' || state.phase === 'followups_generating' || state.phase === 'grading'
@@ -229,6 +262,8 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
           transcript,
           resume: profile.resumeText,
           targetLevel: profile.targetLevel,
+          persona,
+          interviewerContext,
           signal: controller.signal,
         })
         dispatch({ type: 'FOLLOWUPS', followups })
@@ -273,6 +308,8 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
         transcript: conversation,
         stories,
         projects,
+        // When launched from a round's plan, grade fit to that company/JD bar too (either mode).
+        job: targetJob,
         signal: controller.signal,
       })
       const feedback = buildFeedback({ llm, filler })
@@ -339,7 +376,9 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
             </div>
             <p className="text-xs text-stone-500">
               {mode === 'interview'
-                ? `The interviewer knows only your resume and holds you to a ${profile.targetLevel} bar — no story-bank feedback.`
+                ? persona === 'recruiter'
+                  ? 'A recruiter screen: follow-ups stay on motivation, fit, and logistics — no technical questions.'
+                  : `The interviewer knows only your resume and holds you to a ${profile.targetLevel} bar — no story-bank feedback.`
                 : 'Feedback critiques your telling against your confirmed stories (undersold impact, “we” vs “I”, a stronger example).'}
             </p>
           </div>

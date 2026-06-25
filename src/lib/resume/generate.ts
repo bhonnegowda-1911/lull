@@ -73,8 +73,9 @@ export function serializeSources({
 /** Render a generated resume to markdown — used for both export and re-scoring against the JD. Pure. */
 export function resumeToMarkdown(resume: GeneratedResume): string {
   const out: string[] = []
-  if (resume.header.headline) out.push(`# ${resume.header.headline}`)
-  if (resume.header.targetRole) out.push(`_Target: ${resume.header.targetRole}_`)
+  if (resume.header.name) out.push(`# ${resume.header.name}`)
+  if (resume.header.title) out.push(`_${resume.header.title}_`)
+  if (resume.header.contact) out.push(resume.header.contact)
   if (resume.summary) out.push('', resume.summary)
   if (resume.skills.length) {
     out.push('', '## Skills')
@@ -88,6 +89,15 @@ export function resumeToMarkdown(resume: GeneratedResume): string {
     }
   }
   return out.join('\n')
+}
+
+/** A safe download filename for the resume PDF, slugified from the candidate's name. Pure. */
+export function resumeFileName(resume: GeneratedResume): string {
+  const slug = (resume.header.name || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  return slug ? `${slug}-resume.pdf` : 'resume.pdf'
 }
 
 /** Bullets whose provenance doesn't resolve to a story/project id or the resume — the grounding check. Pure. */

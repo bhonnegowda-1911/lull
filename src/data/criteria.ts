@@ -11,6 +11,10 @@ export interface Criteria {
   model: string
   systemPrompt: string
   schema: JsonSchema
+  /** Output token budget for the grade. The STAR schema is large — and coaching mode (stories) and
+   *  job-fit add whole sub-objects — so this needs real headroom, or the JSON truncates and fails to
+   *  parse. Omit to use the gateway default (1500), which is too small for this schema. */
+  maxTokens?: number
 }
 
 const SCORE_ENUM = [1, 2, 3, 4, 5]
@@ -33,6 +37,9 @@ export const STAR_CRITERIA: Criteria = {
   id: 'star',
   label: 'STAR method',
   model: DEFAULT_MODEL,
+  // Full STAR grade + level signal + coaching notes, plus optional storyFidelity/jobFit sub-objects.
+  // 1500 (the default) truncates this and breaks JSON parsing; give it generous headroom.
+  maxTokens: 3500,
   systemPrompt: `You are an expert interview-delivery coach. You grade how well a spoken
 answer follows the STAR method (Situation, Task, Action, Result) and how clear and
 impactful the delivery is.
@@ -84,6 +91,17 @@ e.g. they owned it org-wide but said "we"); list concrete impact present in the 
 OMITTED from the telling; flag solo work framed as "we"/team (misattributedToTeam); and if a
 DIFFERENT provided story/project is a stronger fit for this question, name it in betterExampleTitle.
 Use ONLY the provided ground truth — do not invent facts. If none is provided, OMIT storyFidelity
+entirely.
+
+JD / COMPANY FIT (only when a "TARGET JOB" is provided): a behavioral answer is also judged against
+the specific company and role. Fill "jobFit": echo the company; score 1-5 how well THIS answer lands
+for THIS role's bar; list the JD must-haves/keywords the answer genuinely EVIDENCED (mustHavesHit)
+and the relevant ones it could have surfaced for this role but DIDN'T (mustHavesMissed); and list the
+company's values / behavioral signals the answer demonstrated (valuesSignaled) — apply what you know
+about how this named company evaluates behavioral answers (e.g. its leadership principles or stated
+values), but never fabricate a value the answer doesn't actually support. Keep "note" to one or two
+sentences on the fit and the single highest-leverage thing to add to land better for this company.
+This AUGMENTS the STAR grade — it never replaces it. If no TARGET JOB is provided, OMIT jobFit
 entirely.`,
   schema: {
     type: 'object',
@@ -238,6 +256,33 @@ entirely.`,
           note: { type: 'string', description: 'One or two sentence overall content note.' },
         },
         required: ['matchedStoryTitle', 'underSold', 'omittedImpact', 'misattributedToTeam', 'betterExampleTitle', 'note'],
+        additionalProperties: false,
+      },
+      jobFit: {
+        type: 'object',
+        description:
+          'Fit of this answer to the target company/JD bar. INCLUDE ONLY when a TARGET JOB was provided; otherwise omit this field.',
+        properties: {
+          company: { type: 'string', description: 'The target company this answer was graded against.' },
+          score: { type: 'integer', enum: SCORE_ENUM, description: '1 (off-target for this role) to 5 (strong fit).' },
+          mustHavesHit: {
+            type: 'array',
+            description: "JD must-haves / keywords the answer genuinely evidenced.",
+            items: { type: 'string' },
+          },
+          mustHavesMissed: {
+            type: 'array',
+            description: "Relevant JD must-haves the answer could have surfaced for this role but didn't.",
+            items: { type: 'string' },
+          },
+          valuesSignaled: {
+            type: 'array',
+            description: "Company values / behavioral signals the answer demonstrated (only those genuinely supported).",
+            items: { type: 'string' },
+          },
+          note: { type: 'string', description: 'One or two sentences: the fit, and the highest-leverage thing to add for this company.' },
+        },
+        required: ['company', 'score', 'mustHavesHit', 'mustHavesMissed', 'valuesSignaled', 'note'],
         additionalProperties: false,
       },
     },

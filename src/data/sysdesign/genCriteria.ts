@@ -1,5 +1,5 @@
 import type { Criteria } from '../criteria'
-import { DEFAULT_MODEL } from '../../lib/models'
+import { GEN_MODEL } from '../../lib/models'
 
 // Prompt + schema (DATA, like resumeCriteria) for the JD → system-design SELECTOR. Companies don't
 // invent a bespoke problem for each candidate — they reach for a CANONICAL system-design problem
@@ -12,7 +12,7 @@ import { DEFAULT_MODEL } from '../../lib/models'
 export const SYSDESIGN_SELECT_CRITERIA: Criteria = {
   id: 'sysdesignSelect',
   label: 'System-design problem selection',
-  model: DEFAULT_MODEL,
+  model: GEN_MODEL,
   systemPrompt: `You predict which system-design problems a specific company is likely to ask, from
 their job description and a CATALOG of canonical problems.
 

@@ -44,6 +44,7 @@ export function buildFeedback({ llm, filler }: BuildFeedbackInput = {}): Feedbac
     },
     notes,
     storyFidelity: star.storyFidelity || null,
+    jobFit: star.jobFit || null,
   }
 }
 

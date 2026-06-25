@@ -4,17 +4,29 @@ import { transcribe } from '../lib/transcribe'
 
 // Compact push-to-talk button: records mic audio, transcribes it via the Whisper gateway, and
 // hands the text back through onTranscript so the caller can drop it into whatever field is being
-// filled. The recording is transient (transcript only — no stored asset). Callers render their own
-// error line and can use onBusyChange to disable adjacent inputs while recording/transcribing.
+// filled. Callers render their own error line and can use onBusyChange to disable adjacent inputs
+// while recording/transcribing. The transcribe gateway always stores the original take; callers
+// that want to keep it (replay / scoring) pass onClip + sessionId, otherwise the asset is unused.
+
+/** A captured voice take: stored recording + its spoken length and transcript. */
+export interface MicClip {
+  assetId: string
+  durationSec: number | null
+  text: string
+}
 
 interface MicButtonProps {
   onTranscript: (text: string) => void
   onError?: (message: string) => void
   onBusyChange?: (busy: boolean) => void
   disabled?: boolean
+  /** Session to link the stored recording to. */
+  sessionId?: string
+  /** Called once per recorded take with the stored recording, for replay + delivery scoring. */
+  onClip?: (clip: MicClip) => void
 }
 
-export default function MicButton({ onTranscript, onError, onBusyChange, disabled }: MicButtonProps) {
+export default function MicButton({ onTranscript, onError, onBusyChange, disabled, sessionId, onClip }: MicButtonProps) {
   const { hasOpenai } = useApiKeys()
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
@@ -83,10 +95,12 @@ export default function MicButton({ onTranscript, onError, onBusyChange, disable
     stopStream()
     setTranscribing(true)
     try {
-      const { transcript } = await transcribe(blob, { fallbackDurationSec: durationSec })
+      const { transcript, assetId } = await transcribe(blob, { fallbackDurationSec: durationSec, sessionId })
       const spoken = (transcript.text || '').trim()
-      if (spoken) onTranscript(spoken)
-      else onError?.('No speech detected. Try again or type your answer.')
+      if (spoken) {
+        onTranscript(spoken)
+        if (assetId) onClip?.({ assetId, durationSec: transcript.durationSec ?? durationSec, text: spoken })
+      } else onError?.('No speech detected. Try again or type your answer.')
     } catch (e) {
       onError?.((e as Error)?.message || 'Transcription failed.')
     } finally {

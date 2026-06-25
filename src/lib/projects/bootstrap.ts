@@ -1,5 +1,5 @@
 import { chatStructured } from '../llmClient'
-import { DEFAULT_MODEL } from '../models'
+import { FAST_MODEL } from '../models'
 
 // Cold-start: turn a pasted resume into skeleton PROJECTS (one per notable effort) so the builder
 // isn't empty on day one. Only title/roleRef/summary are filled — the competency facets are left
@@ -44,7 +44,7 @@ export async function bootstrapProjects(resumeText: string, signal?: AbortSignal
   if (!trimmed) return []
   const { parsed } = await chatStructured<{ projects?: ProjectSkeleton[] }>({
     provider: 'anthropic',
-    model: DEFAULT_MODEL,
+    model: FAST_MODEL,
     system: SYSTEM,
     user: `RESUME:\n${trimmed}`,
     schema: SCHEMA,

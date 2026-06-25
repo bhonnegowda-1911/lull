@@ -1,10 +1,22 @@
-import type { JobDescription, ParsedJob, ProblemPick, BehavioralPick, RecruiterPick } from '../types'
+import { roundCatalog } from '../data/rounds'
+import type {
+  Application,
+  InterviewRoundInstance,
+  JobDescription,
+  ParsedJob,
+  PrepPlan,
+  ProblemPick,
+  CodingPick,
+  BehavioralPick,
+  RecruiterPick,
+  RoundType,
+} from '../types'
 
 // Client for the job-description store, backed by the server. Mirrors projectStore: reads return
 // []/null when the backend is unreachable; writes resolve to a boolean. Maps snake_case columns to
 // the camelCase domain type.
 
-const BASE = import.meta.env.VITE_API_BASE ?? ''
+import { API_BASE as BASE } from './api'
 
 interface JobRow {
   id: string
@@ -13,8 +25,64 @@ interface JobRow {
   raw_text: string | null
   parsed: ParsedJob | Record<string, never> | null
   problem_picks: ProblemPick[] | null
+  coding_picks: CodingPick[] | null
   behavioral_picks: BehavioralPick[] | null
   recruiter_picks: RecruiterPick[] | null
+  application: Application | LegacyApplication | null
+  /** Legacy job-level prep plan column; migrated into a round instance, no longer written. */
+  prep_plan: PrepPlan | null
+}
+
+// ---- Legacy application migration ----------------------------------------
+// The original model had a fixed 4-round `stages` array and one job-level prep plan. Upgrade any
+// such blob to the configurable `rounds` model so saved jobs keep working without a DB migration.
+type LegacyRound = 'recruiter' | 'behavioral' | 'system_design' | 'onsite'
+interface LegacyStage {
+  round: LegacyRound
+  label: string
+  scheduledAt: string | null
+  outcome: InterviewRoundInstance['outcome']
+}
+interface LegacyApplication {
+  status: Application['status']
+  stages: LegacyStage[]
+  decisionNote: string
+}
+
+const LEGACY_TYPE: Record<LegacyRound, RoundType> = {
+  recruiter: 'recruiter',
+  behavioral: 'behavioral',
+  system_design: 'system_design',
+  onsite: 'onsite_loop',
+}
+
+function isLegacy(app: Application | LegacyApplication): app is LegacyApplication {
+  return Array.isArray((app as LegacyApplication).stages)
+}
+
+function normalizeApplication(
+  app: Application | LegacyApplication | null,
+  legacyPrepPlan: PrepPlan | null,
+): Application | null {
+  if (!app) return null
+  if (!isLegacy(app)) return { ...app, fit: app.fit ?? null }
+  const rounds: InterviewRoundInstance[] = app.stages.map((s) => {
+    const type = LEGACY_TYPE[s.round] ?? 'custom'
+    // Re-attach the old single job-level prep plan to the round it was built for.
+    const prepPlan = legacyPrepPlan && legacyPrepPlan.targetRound === type ? legacyPrepPlan : null
+    return {
+      id: crypto.randomUUID(),
+      type,
+      label: s.label || roundCatalog(type).label,
+      topic: '',
+      focusAreas: [],
+      scheduledAt: s.scheduledAt,
+      scheduledTime: null,
+      outcome: s.outcome,
+      prepPlan,
+    }
+  })
+  return { status: app.status, rounds, fit: null, decisionNote: app.decisionNote }
 }
 
 function fromRow(r: JobRow): JobDescription {
@@ -26,13 +94,26 @@ function fromRow(r: JobRow): JobDescription {
     rawText: r.raw_text ?? '',
     parsed,
     problemPicks: r.problem_picks ?? [],
+    codingPicks: r.coding_picks ?? [],
     behavioralPicks: r.behavioral_picks ?? [],
     recruiterPicks: r.recruiter_picks ?? [],
+    application: normalizeApplication(r.application, r.prep_plan ?? null),
   }
 }
 
 export function emptyJob(id: string): JobDescription {
-  return { id, title: '', company: '', rawText: '', parsed: null, problemPicks: [], behavioralPicks: [], recruiterPicks: [] }
+  return {
+    id,
+    title: '',
+    company: '',
+    rawText: '',
+    parsed: null,
+    problemPicks: [],
+    codingPicks: [],
+    behavioralPicks: [],
+    recruiterPicks: [],
+    application: null,
+  }
 }
 
 export async function listJobs(): Promise<JobDescription[]> {

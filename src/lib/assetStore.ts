@@ -3,7 +3,7 @@
 // returned asset id and reference it from a session payload. `assetUrl(id)` is usable
 // directly as an <img>/<audio>/<video> src.
 
-const BASE = import.meta.env.VITE_API_BASE ?? ''
+import { API_BASE as BASE } from './api'
 
 export type AssetKind = 'audio' | 'video' | 'image' | 'pdf' | 'file'
 

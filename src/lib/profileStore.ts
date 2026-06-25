@@ -4,7 +4,7 @@ import { DEFAULT_PROFILE, type Profile } from '../data/stories'
 // call degrades gracefully: if the backend is unreachable the app falls back to DEFAULT_PROFILE
 // (and a localStorage cache) so behavioral practice is never blocked by infra.
 
-const BASE = import.meta.env.VITE_API_BASE ?? ''
+import { API_BASE as BASE } from './api'
 const CACHE_KEY = 'deliveryCoach.profile'
 
 // The server returns snake_case columns; map to/from the camelCase domain type.

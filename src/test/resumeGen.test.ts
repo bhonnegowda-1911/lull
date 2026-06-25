@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resumeToMarkdown, serializeSources, ungroundedBullets } from '../lib/resume/generate'
+import { resumeFileName, resumeToMarkdown, serializeSources, ungroundedBullets } from '../lib/resume/generate'
 import { DEFAULT_PROFILE, emptyStory, type Story } from '../data/stories'
 import { emptyProject, type Project } from '../data/projects'
 import type { GeneratedResume } from '../types'
@@ -58,7 +58,7 @@ describe('serializeSources', () => {
 describe('resumeToMarkdown', () => {
   it('renders header, skills, and bullets with metrics', () => {
     const resume: GeneratedResume = {
-      header: { headline: 'Backend engineer who ships', targetRole: 'Senior Backend' },
+      header: { name: 'Ada Lovelace', title: 'Senior Backend Engineer', contact: 'ada@example.com · NYC' },
       summary: 'Builds reliable systems.',
       skills: [{ category: 'Languages', items: ['Go', 'Python'] }],
       experience: [
@@ -71,15 +71,26 @@ describe('resumeToMarkdown', () => {
       ],
     }
     const md = resumeToMarkdown(resume)
-    expect(md).toContain('# Backend engineer who ships')
+    expect(md).toContain('# Ada Lovelace')
+    expect(md).toContain('_Senior Backend Engineer_')
+    expect(md).toContain('ada@example.com · NYC')
     expect(md).toContain('**Languages:** Go, Python')
     expect(md).toContain('- Cut billing latency (p99 800ms → 480ms)')
   })
 })
 
+describe('resumeFileName', () => {
+  it('slugifies the name into a safe .pdf filename', () => {
+    expect(resumeFileName({ header: { name: 'Ada B. Lovelace!', title: '', contact: '' }, summary: '', skills: [], experience: [] })).toBe(
+      'ada-b-lovelace-resume.pdf',
+    )
+    expect(resumeFileName({ header: { name: '', title: '', contact: '' }, summary: '', skills: [], experience: [] })).toBe('resume.pdf')
+  })
+})
+
 describe('ungroundedBullets', () => {
   const resume: GeneratedResume = {
-    header: { headline: 'h', targetRole: 'r' },
+    header: { name: 'n', title: 't', contact: 'c' },
     summary: '',
     skills: [],
     experience: [

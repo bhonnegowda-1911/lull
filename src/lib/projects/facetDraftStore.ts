@@ -8,7 +8,7 @@ import type { FacetBeats, FacetMessage } from './facetChat'
 // the draft is then deleted from both. Writes are fire-and-forget to the backend; the cache is the
 // synchronous source the UI reads, and hydrateProjectDrafts refreshes it from the server on open.
 
-const BASE = import.meta.env.VITE_API_BASE ?? ''
+import { API_BASE as BASE } from '../api'
 const PREFIX = 'deliveryCoach.facetDraft'
 
 export interface FacetDraft {

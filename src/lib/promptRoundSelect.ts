@@ -15,7 +15,11 @@ export interface PromptPick {
   rationale: string
 }
 
-function jobContext(job: JobDescription, catalog: { id: string; text: string; category: string }[]): string {
+function jobContext(
+  job: JobDescription,
+  catalog: { id: string; text: string; category: string }[],
+  interviewerContext?: string,
+): string {
   const p = job.parsed
   const parsed = p
     ? [
@@ -26,21 +30,32 @@ function jobContext(job: JobDescription, catalog: { id: string; text: string; ca
       ].join('\n')
     : `Title: ${job.title}\nCompany: ${job.company}`
   const list = catalog.map((c) => `- ${c.id} [${c.category}]: ${c.text}`).join('\n')
-  return `CATALOG OF QUESTIONS (pick promptId only from these ids):\n${list}\n\nPARSED STRUCTURE:\n${parsed}\n\nRAW JOB DESCRIPTION:\n${job.rawText.trim()}`
+  // The candidate's own intel about THIS interviewer/round (who they are, what they focus on) —
+  // weight the ranking toward it. Often the sharpest signal of what will actually be asked.
+  const intel = interviewerContext?.trim()
+    ? `\n\nWHAT THE CANDIDATE KNOWS ABOUT THIS INTERVIEWER / ROUND (weight the ranking toward this — it's first-hand intel on what they'll actually focus on):\n${interviewerContext.trim()}`
+    : ''
+  return `CATALOG OF QUESTIONS (pick promptId only from these ids):\n${list}\n\nPARSED STRUCTURE:\n${parsed}${intel}\n\nRAW JOB DESCRIPTION:\n${job.rawText.trim()}`
+}
+
+export interface SelectOptions {
+  /** First-hand intel about the interviewer/round — biases the ranking toward what they'll ask. */
+  interviewerContext?: string
+  signal?: AbortSignal
 }
 
 export async function selectPromptRound(
   job: JobDescription,
   criteria: Criteria,
   includeCategory: (category: string) => boolean,
-  signal?: AbortSignal,
+  { interviewerContext, signal }: SelectOptions = {},
 ): Promise<PromptPick[]> {
   const catalog = promptCatalog().filter((c) => includeCategory(c.category))
   const { parsed } = await chatStructured<{ picks: PromptPick[] }>({
     provider: 'anthropic',
     model: criteria.model,
     system: criteria.systemPrompt,
-    user: jobContext(job, catalog),
+    user: jobContext(job, catalog, interviewerContext),
     schema: criteria.schema,
     maxTokens: 1800,
     thinking: 'adaptive',

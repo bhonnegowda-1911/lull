@@ -3,7 +3,7 @@ import type { Story } from '../data/stories'
 // Client for the story bank, backed by the server. Mirrors sessionStore: read calls return []/null
 // when the backend is unreachable and writes resolve to a boolean, so the UI degrades gracefully.
 
-const BASE = import.meta.env.VITE_API_BASE ?? ''
+import { API_BASE as BASE } from './api'
 
 // Server columns are snake_case; map to/from the camelCase domain Story.
 interface StoryRow {

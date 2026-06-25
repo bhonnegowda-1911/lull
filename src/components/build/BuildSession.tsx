@@ -1,6 +1,8 @@
 import { useEffect, useReducer, useRef } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useApiKeys } from '../../context/ApiKeyContext'
+import { celebrateBig } from '../../lib/ui/celebrate'
+import { track } from '../../lib/metrics/events'
 import { getBuildProblem, BUILD_PROBLEMS } from '../../data/build/problems'
 import { BUILD_STAGES } from '../../data/build/stages'
 import { dimensionLabel } from '../../data/build/rubric'
@@ -150,6 +152,17 @@ export default function BuildSession({ onNeedKeys }: { onNeedKeys?: () => void }
 
   // Mirror to localStorage on every change; RESET (→ 'pick') clears it.
   useEffect(() => persistSession(state), [state])
+
+  // Celebrate when a fresh report lands (reporting → report). Guarded by the prior phase so
+  // re-opening a completed session from History doesn't re-fire the confetti on mount.
+  const prevPhaseRef = useRef(state.phase)
+  useEffect(() => {
+    if (state.phase === 'report' && prevPhaseRef.current === 'reporting') {
+      celebrateBig()
+      track('session_completed', { kind: 'build', level: state.report?.overall.level ?? null })
+    }
+    prevPhaseRef.current = state.phase
+  }, [state.phase])
 
   // Mirror to the durable backend store. Debounce mid-session chatter; save a finished report
   // immediately. Nothing to persist on the picker.

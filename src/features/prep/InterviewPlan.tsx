@@ -142,7 +142,7 @@ export default function InterviewPlan({ job, onSaved }: Props) {
                 <div className="mt-2 flex items-center gap-3">
                   <button
                     type="button"
-                    onClick={() => navigate('/interview/sysdesign', { state: { startProblemId: pick.problemId } })}
+                    onClick={() => navigate('/practice/sysdesign', { state: { startProblemId: pick.problemId } })}
                     className="rounded-md bg-terracotta-600 px-3 py-1 text-xs font-medium text-white hover:bg-terracotta-500"
                   >
                     Practice →

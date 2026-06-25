@@ -20,9 +20,11 @@ interface Props {
   job: JobDescription
   /** Refresh the parent's job list after picks are saved onto the job. */
   onSaved?: () => void
+  /** The round's notes — first-hand intel about this interviewer, used to bias selection + practice. */
+  interviewerContext?: string
 }
 
-export default function BehavioralPlan({ job, onSaved }: Props) {
+export default function BehavioralPlan({ job, onSaved, interviewerContext }: Props) {
   const navigate = useNavigate()
   const [selecting, setSelecting] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -49,7 +51,7 @@ export default function BehavioralPlan({ job, onSaved }: Props) {
     setError(null)
     setSaved(false)
     try {
-      setDraft(await selectBehavioralQuestions(job))
+      setDraft(await selectBehavioralQuestions(job, { interviewerContext }))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not select — is the backend running and an LLM key set?')
     } finally {
@@ -131,7 +133,7 @@ export default function BehavioralPlan({ job, onSaved }: Props) {
                 <div className="mt-2 flex items-center gap-3">
                   <button
                     type="button"
-                    onClick={() => navigate('/interview/behavioral', { state: { startPromptId: pick.promptId } })}
+                    onClick={() => navigate('/practice/behavioral', { state: { startPromptId: pick.promptId, jobId: job.id, persona: 'hiring_manager', interviewerContext } })}
                     className="rounded-md bg-terracotta-600 px-3 py-1 text-xs font-medium text-white hover:bg-terracotta-500"
                   >
                     Practice →

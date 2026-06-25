@@ -2,7 +2,7 @@ import { chatStructured } from '../llmClient'
 import { DEFAULT_CRITERIA, type Criteria } from '../../data/criteria'
 import type { Story } from '../../data/stories'
 import { FACETS, facetText, type Project } from '../../data/projects'
-import type { AnalyzerContext, FillerResult, LlmAnalyzerResult, StarGrading, Transcript } from '../../types'
+import type { AnalyzerContext, FillerResult, LlmAnalyzerResult, ParsedJob, StarGrading, Transcript } from '../../types'
 
 // Criteria-driven analyzer. The criteria object supplies the system prompt and the
 // response schema; this analyzer just assembles the user message (question + transcript +
@@ -44,6 +44,17 @@ function projectsBlock(projects: Project[]): string {
   return lines.join('\n')
 }
 
+function jobBlock(job: ParsedJob): string {
+  const lines = [
+    `TARGET JOB (grade fit against this company/role — apply what you know about how ${job.company || 'this company'} evaluates behavioral answers; never fabricate fit):`,
+    `- Role: ${job.title}${job.company ? ` @ ${job.company}` : ''} (${job.seniority})`,
+  ]
+  if (job.mustHaveSkills.length) lines.push(`- Must-haves: ${job.mustHaveSkills.map((s) => s.skill).join(', ')}`)
+  if (job.keywords.length) lines.push(`- Keywords: ${job.keywords.join(', ')}`)
+  if (job.responsibilities.length) lines.push(`- Responsibilities: ${job.responsibilities.join('; ')}`)
+  return lines.join('\n')
+}
+
 function buildUserMessage({
   question,
   transcript,
@@ -51,6 +62,7 @@ function buildUserMessage({
   filler,
   stories,
   projects,
+  job,
 }: {
   question: string
   transcript: Transcript
@@ -58,6 +70,7 @@ function buildUserMessage({
   filler?: FillerResult
   stories?: Story[]
   projects?: Project[]
+  job?: ParsedJob | null
 }): string {
   const lines: string[] = []
   lines.push(`INTERVIEW QUESTION:\n${question || '(none provided)'}`)
@@ -84,6 +97,10 @@ function buildUserMessage({
     lines.push('')
     lines.push(projectsBlock(projects))
   }
+  if (job) {
+    lines.push('')
+    lines.push(jobBlock(job))
+  }
   return lines.join('\n')
 }
 
@@ -99,6 +116,7 @@ export function makeLlmAnalyzer(criteria: Criteria = DEFAULT_CRITERIA) {
         filler: ctx.filler,
         stories: ctx.stories,
         projects: ctx.projects,
+        job: ctx.job,
       })
 
       const { parsed, raw } = await chatStructured<StarGrading>({
@@ -107,6 +125,7 @@ export function makeLlmAnalyzer(criteria: Criteria = DEFAULT_CRITERIA) {
         system: criteria.systemPrompt,
         user,
         schema: criteria.schema,
+        maxTokens: criteria.maxTokens,
         signal: ctx.signal,
       })
 

@@ -3,7 +3,8 @@
 // Prompt + schema construction stays here on the client; the gateway just forwards to the
 // provider and returns the parsed structured output.
 
-const BASE = import.meta.env.VITE_API_BASE ?? ''
+import { API_BASE as BASE } from './api'
+import { getAnthropicKey } from './userKeys'
 
 export type Provider = 'anthropic' | 'openai'
 
@@ -36,6 +37,19 @@ export interface ChatStructuredRequest {
   model: string
   system: string
   user: string
+  /**
+   * Stable, reused leading portion of the user turn (e.g. an interview's prior transcript). The
+   * gateway sends it as a cache_control breakpoint so the cached prefix covers system + this block;
+   * later turns within a stage re-read it at ~0.1x input cost. Keep the volatile latest message in
+   * `user`. No effect until the prefix clears the model's cache minimum (4096 tokens on Opus 4.8).
+   */
+  cachePrefix?: string
+  /**
+   * Optional base64 PNG images (no `data:` prefix) attached to the user turn as vision blocks —
+   * e.g. the rendered system-design whiteboard, so the model can actually see the candidate's
+   * diagram. Forwarded to the gateway and ignored when empty.
+   */
+  images?: string[]
   schema: JsonSchema
   maxTokens?: number
   /**
@@ -68,11 +82,16 @@ export async function chatStructured<T = unknown>(
   req: ChatStructuredRequest,
 ): Promise<{ parsed: T; raw: AnthropicResponse }> {
   const { signal, ...body } = req
+  // BYOK: send the user's own key (held only in this browser) per request. Omitted when unset,
+  // so the server can fall back to its env key for local/single-user setups.
+  const headers: Record<string, string> = { 'content-type': 'application/json' }
+  const userKey = getAnthropicKey()
+  if (userKey) headers['x-anthropic-key'] = userKey
   let res: Response
   try {
     res = await fetch(`${BASE}/api/llm/chat`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
       signal,
     })

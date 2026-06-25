@@ -1,6 +1,11 @@
 import { Router } from 'express'
 import multer from 'multer'
 import { randomUUID } from 'node:crypto'
+import { spawn } from 'node:child_process'
+import { mkdtemp, writeFile, readFile, readdir, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import ffmpegPath from 'ffmpeg-static'
 import { pool } from '../db.js'
 import { putObject } from '../storage.js'
 
@@ -15,23 +20,28 @@ export const llm = Router()
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages'
 const ANTHROPIC_VERSION = '2023-06-01'
 const WHISPER_URL = 'https://api.openai.com/v1/audio/transcriptions'
+const DEEPGRAM_URL = 'https://api.deepgram.com/v1/listen'
 
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || ''
 const OPENAI_KEY = process.env.OPENAI_API_KEY || ''
+const DEEPGRAM_KEY = process.env.DEEPGRAM_API_KEY || ''
 
 export function providerStatus() {
-  return { anthropic: Boolean(ANTHROPIC_KEY), openai: Boolean(OPENAI_KEY) }
+  return { anthropic: Boolean(ANTHROPIC_KEY), openai: Boolean(OPENAI_KEY), deepgram: Boolean(DEEPGRAM_KEY) }
 }
 
 // Transient upstream failures we ride out with backoff rather than surfacing to the user. 529 is
 // Anthropic's "Overloaded"; 5xx and 429 are momentary saturation/rate. The request itself is fine.
 const RETRYABLE_STATUS = new Set([429, 500, 502, 503, 529])
-const MAX_RETRIES = 3
+// Ride out a sustained overload: 6 attempts with backoff capped at 8s (~0.7,1.4,2.8,5.6,8s of waits,
+// plus jitter) before surfacing the error. Heavier calls (e.g. the prep plan) hit 529 more often.
+const MAX_RETRIES = 6
+const MAX_BACKOFF_MS = 8000
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 /** POST to Anthropic, retrying transient errors with exponential backoff + jitter (honoring
  *  Retry-After when given). Returns the final Response; the caller handles non-ok statuses. */
-async function postAnthropicWithRetry(body: unknown): Promise<Response> {
+async function postAnthropicWithRetry(body: unknown, apiKey: string): Promise<Response> {
   for (let attempt = 0; ; attempt++) {
     let upstream: Response | null = null
     try {
@@ -39,7 +49,7 @@ async function postAnthropicWithRetry(body: unknown): Promise<Response> {
         method: 'POST',
         headers: {
           'content-type': 'application/json',
-          'x-api-key': ANTHROPIC_KEY,
+          'x-api-key': apiKey,
           'anthropic-version': ANTHROPIC_VERSION,
         },
         body: JSON.stringify(body),
@@ -52,7 +62,7 @@ async function postAnthropicWithRetry(body: unknown): Promise<Response> {
     }
     const retryAfter = upstream ? Number(upstream.headers.get('retry-after')) : NaN
     upstream?.body?.cancel().catch(() => {}) // free the connection before retrying
-    const backoff = 600 * 2 ** attempt + Math.floor(Math.random() * 300)
+    const backoff = Math.min(700 * 2 ** attempt, MAX_BACKOFF_MS) + Math.floor(Math.random() * 400)
     const waitMs = Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : backoff
     console.warn(`[llm] transient upstream ${upstream?.status ?? 'network'}; retrying in ${waitMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`)
     await sleep(waitMs)
@@ -64,11 +74,38 @@ interface ChatBody {
   model: string
   system: string
   user: string
+  /**
+   * Stable, reused leading portion of the user turn (e.g. an interview's prior transcript). Sent as
+   * its own text block with a cache_control breakpoint, so the cached prefix spans system + this
+   * block — turns after the first within a stage re-read it at ~0.1x input cost instead of full
+   * price. The cache only writes once the prefix clears the model's minimum (4096 tokens on Opus
+   * 4.8), so short early turns are a harmless no-op. Keep the volatile latest message in `user`.
+   */
+  cachePrefix?: string
+  /** Optional base64 PNG images (no data: prefix) attached to the user turn as vision blocks. */
+  images?: string[]
   schema: Record<string, unknown>
   maxTokens?: number
   temperature?: number
   thinking?: 'adaptive'
   effort?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+}
+
+// Build the user-turn content. A plain string when there's nothing special; otherwise a content-block
+// array: an optional cached prefix block (cache_control breakpoint), then the volatile latest message,
+// then one image block per attachment (Anthropic vision format). Images live AFTER the breakpoint so a
+// changing whiteboard never invalidates the cached prefix.
+function userContent(b: ChatBody): unknown {
+  const images = (b.images || []).filter((d) => typeof d === 'string' && d.length > 0)
+  const prefix = (b.cachePrefix || '').trim()
+  if (!images.length && !prefix) return b.user
+  const blocks: unknown[] = []
+  if (prefix) blocks.push({ type: 'text', text: b.cachePrefix, cache_control: { type: 'ephemeral' } })
+  blocks.push({ type: 'text', text: b.user })
+  for (const data of images) {
+    blocks.push({ type: 'image', source: { type: 'base64', media_type: 'image/png', data } })
+  }
+  return blocks
 }
 
 // POST /api/llm/chat → { parsed, raw }
@@ -77,7 +114,12 @@ llm.post('/chat', async (req, res) => {
   if ((b.provider ?? 'anthropic') !== 'anthropic') {
     return res.status(400).json({ error: 'Only the anthropic provider is implemented.' })
   }
-  if (!ANTHROPIC_KEY) return res.status(503).json({ error: 'Server has no Anthropic API key configured.' })
+  // BYOK: prefer the user's own key (sent per request, never stored); fall back to the server's
+  // env key for local/single-user setups. Never log the key.
+  const apiKey = (req.header('x-anthropic-key') || ANTHROPIC_KEY).trim()
+  if (!apiKey) {
+    return res.status(503).json({ error: 'No Anthropic API key. Add yours in Settings, or set one on the server.' })
+  }
 
   const outputConfig: Record<string, unknown> = { format: { type: 'json_schema', schema: b.schema } }
   if (b.effort) outputConfig.effort = b.effort
@@ -85,7 +127,7 @@ llm.post('/chat', async (req, res) => {
     model: b.model,
     max_tokens: b.maxTokens ?? 1500,
     system: b.system,
-    messages: [{ role: 'user', content: b.user }],
+    messages: [{ role: 'user', content: userContent(b) }],
     output_config: outputConfig,
   }
   if (typeof b.temperature === 'number') body.temperature = b.temperature
@@ -93,7 +135,7 @@ llm.post('/chat', async (req, res) => {
 
   let upstream: Response
   try {
-    upstream = await postAnthropicWithRetry(body)
+    upstream = await postAnthropicWithRetry(body, apiKey)
   } catch {
     return res.status(502).json({ error: 'Network error reaching Anthropic.' })
   }
@@ -123,6 +165,14 @@ llm.post('/chat', async (req, res) => {
   if (data.stop_reason === 'refusal') {
     return res.status(422).json({ error: 'The model declined to analyze this content.' })
   }
+  // Truncation produces incomplete JSON that then fails to parse below — surface the real cause (the
+  // length limit) with an actionable message instead of a generic "could not parse". The caller's
+  // maxTokens budget is too small for this response; raising it is the fix.
+  if (data.stop_reason === 'max_tokens') {
+    return res
+      .status(502)
+      .json({ error: 'The analysis was cut off before it finished (hit the length limit). Please try again.' })
+  }
   const textBlock = (data.content || []).find((c) => c.type === 'text')
   if (!textBlock?.text) return res.status(502).json({ error: 'Empty analysis response.' })
 
@@ -136,35 +186,35 @@ llm.post('/chat', async (req, res) => {
   res.json({ parsed, raw: data })
 })
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } })
+interface WhisperWord {
+  word: string
+  start: number
+  end: number
+}
+interface WhisperResult {
+  text: string
+  words: WhisperWord[]
+  duration: number | null
+}
 
-// POST /api/llm/transcribe (multipart: file, optional sessionId) → { transcript, assetId }
-// Stores the original recording in MinIO (the user wants it kept) AND transcribes it.
-llm.post('/transcribe', upload.single('file'), async (req, res) => {
-  const file = req.file
-  if (!file) return res.status(400).json({ error: 'file is required' })
-  if (!OPENAI_KEY) return res.status(503).json({ error: 'Server has no OpenAI API key configured.' })
-
-  // 1) Persist the original recording as an asset.
-  const assetId = randomUUID()
-  const kind = file.mimetype.startsWith('video/') ? 'video' : 'audio'
-  const objectKey = `${kind}/${assetId}`
-  const sessionId = req.body.sessionId ? String(req.body.sessionId) : null
-  try {
-    await putObject(objectKey, file.buffer, file.mimetype)
-    await pool.query(
-      `INSERT INTO assets (id, session_id, kind, object_key, content_type, size_bytes, original_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [assetId, sessionId, kind, objectKey, file.mimetype, file.size, file.originalname || null],
-    )
-  } catch (e) {
-    console.error('[llm] failed to store recording', e)
-    // Storage failure shouldn't block transcription — continue without an assetId.
+/** Raised when Whisper rejects a chunk; carries the upstream status so the route can echo it. */
+class WhisperError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
   }
+}
 
-  // 2) Transcribe via Whisper.
+/** POST one audio buffer to Whisper (verbose_json + word timestamps) and return its parsed result. */
+async function whisperTranscribe(
+  buffer: Buffer,
+  mimetype: string,
+  filename: string,
+  openaiKey: string,
+): Promise<WhisperResult> {
   const form = new FormData()
-  form.append('file', new Blob([file.buffer], { type: file.mimetype }), file.originalname || 'answer.webm')
+  form.append('file', new Blob([buffer], { type: mimetype }), filename)
   form.append('model', 'whisper-1')
   form.append('response_format', 'verbose_json')
   form.append('timestamp_granularities[]', 'word')
@@ -173,11 +223,11 @@ llm.post('/transcribe', upload.single('file'), async (req, res) => {
   try {
     upstream = await fetch(WHISPER_URL, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${OPENAI_KEY}` },
+      headers: { Authorization: `Bearer ${openaiKey}` },
       body: form,
     })
   } catch {
-    return res.status(502).json({ error: 'Network error reaching the transcription service.' })
+    throw new WhisperError('Network error reaching the transcription service.', 502)
   }
   if (!upstream.ok) {
     let msg = ''
@@ -186,14 +236,267 @@ llm.post('/transcribe', upload.single('file'), async (req, res) => {
     } catch {
       /* ignore */
     }
-    return res.status(upstream.status).json({ error: msg || `Transcription failed (${upstream.status}).` })
+    throw new WhisperError(msg || `Transcription failed (${upstream.status}).`, upstream.status)
   }
-  const data = (await upstream.json()) as { text?: string; words?: unknown; duration?: number }
+  const data = (await upstream.json()) as { text?: string; words?: WhisperWord[]; duration?: number }
+  return {
+    text: (data.text || '').trim(),
+    words: Array.isArray(data.words) ? data.words : [],
+    duration: typeof data.duration === 'number' && data.duration > 0 ? data.duration : null,
+  }
+}
+
+interface DiarizedUtterance {
+  speaker: number
+  start: number
+  end: number
+  text: string
+}
+interface DiarizedResult {
+  /** Speaker-labeled transcript text ("Speaker 0: …\nSpeaker 1: …") for the grader to read. */
+  text: string
+  words: Array<WhisperWord & { speaker?: number }>
+  durationSec: number | null
+  utterances: DiarizedUtterance[]
+}
+
+// Deepgram's prerecorded API. Unlike Whisper, it diarizes (per-word speaker labels) and ingests a
+// whole long file in one request — so the review path uses it when a Deepgram key is present and
+// skips the ffmpeg chunking entirely. We turn its utterances into a "Speaker N:" labeled transcript
+// so the downstream grader can tell the interviewer from the candidate.
+async function deepgramTranscribe(buffer: Buffer, mimetype: string, key: string): Promise<DiarizedResult> {
+  const params = new URLSearchParams({
+    model: 'nova-2',
+    diarize: 'true',
+    punctuate: 'true',
+    smart_format: 'true',
+    utterances: 'true',
+  })
+  let upstream: Response
+  try {
+    upstream = await fetch(`${DEEPGRAM_URL}?${params}`, {
+      method: 'POST',
+      headers: { Authorization: `Token ${key}`, 'Content-Type': mimetype || 'audio/mpeg' },
+      body: buffer,
+    })
+  } catch {
+    throw new WhisperError('Network error reaching Deepgram.', 502)
+  }
+  if (!upstream.ok) {
+    let msg = ''
+    try {
+      msg = ((await upstream.json()) as { err_msg?: string; reason?: string })?.err_msg || ''
+    } catch {
+      /* ignore */
+    }
+    throw new WhisperError(msg || `Diarized transcription failed (${upstream.status}).`, upstream.status)
+  }
+  const data = (await upstream.json()) as {
+    results?: {
+      channels?: Array<{ alternatives?: Array<{ transcript?: string; words?: Array<{ word: string; punctuated_word?: string; start: number; end: number; speaker?: number }> }> }>
+      utterances?: Array<{ speaker?: number; start: number; end: number; transcript: string }>
+    }
+    metadata?: { duration?: number }
+  }
+  const alt = data.results?.channels?.[0]?.alternatives?.[0]
+  const utts: DiarizedUtterance[] = (data.results?.utterances || []).map((u) => ({
+    speaker: u.speaker ?? 0,
+    start: u.start,
+    end: u.end,
+    text: u.transcript,
+  }))
+  // Merge consecutive same-speaker utterances into labeled lines.
+  const lines: string[] = []
+  let curSpeaker = -1
+  for (const u of utts) {
+    if (u.speaker === curSpeaker) lines[lines.length - 1] += ' ' + u.text
+    else {
+      curSpeaker = u.speaker
+      lines.push(`Speaker ${u.speaker}: ${u.text}`)
+    }
+  }
+  const words = (alt?.words || []).map((w) => ({
+    word: w.punctuated_word || w.word,
+    start: w.start,
+    end: w.end,
+    speaker: w.speaker,
+  }))
+  return {
+    text: lines.join('\n') || (alt?.transcript || '').trim(),
+    words,
+    durationSec: typeof data.metadata?.duration === 'number' && data.metadata.duration > 0 ? data.metadata.duration : null,
+    utterances: utts,
+  }
+}
+
+/** Persist the original uploaded recording as an asset. Best-effort: storage failure returns null
+ *  rather than blocking transcription (the transcript is the product; the recording is a bonus). */
+async function storeRecordingAsset(
+  file: Express.Multer.File,
+  sessionId: string | null,
+): Promise<string | null> {
+  const assetId = randomUUID()
+  const kind = file.mimetype.startsWith('video/') ? 'video' : 'audio'
+  const objectKey = `${kind}/${assetId}`
+  try {
+    await putObject(objectKey, file.buffer, file.mimetype)
+    await pool.query(
+      `INSERT INTO assets (id, session_id, kind, object_key, content_type, size_bytes, original_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [assetId, sessionId, kind, objectKey, file.mimetype, file.size, file.originalname || null],
+    )
+    return assetId
+  } catch (e) {
+    console.error('[llm] failed to store recording', e)
+    return null
+  }
+}
+
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } })
+
+// POST /api/llm/transcribe (multipart: file, optional sessionId) → { transcript, assetId }
+// Stores the original recording in MinIO (the user wants it kept) AND transcribes it. Single-shot:
+// for short takes only (the 25 MB Whisper limit). Long interviews go through /transcribe-long.
+llm.post('/transcribe', upload.single('file'), async (req, res) => {
+  const file = req.file
+  if (!file) return res.status(400).json({ error: 'file is required' })
+  // BYOK: user's own key per request, env key as fallback. Never logged.
+  const openaiKey = (req.header('x-openai-key') || OPENAI_KEY).trim()
+  if (!openaiKey) {
+    return res.status(503).json({ error: 'No OpenAI API key. Add yours in Settings, or set one on the server.' })
+  }
+
+  const sessionId = req.body.sessionId ? String(req.body.sessionId) : null
+  const assetId = await storeRecordingAsset(file, sessionId)
+
+  let result: WhisperResult
+  try {
+    result = await whisperTranscribe(file.buffer, file.mimetype, file.originalname || 'answer.webm', openaiKey)
+  } catch (e) {
+    const err = e as WhisperError
+    return res.status(err.status || 502).json({ error: err.message })
+  }
   const fallback = req.body.fallbackDurationSec ? Number(req.body.fallbackDurationSec) : null
   const transcript = {
-    text: (data.text || '').trim(),
-    words: data.words,
-    durationSec: typeof data.duration === 'number' && data.duration > 0 ? data.duration : fallback,
+    text: result.text,
+    words: result.words,
+    durationSec: result.duration ?? fallback,
   }
   res.json({ transcript, assetId })
+})
+
+// Long-form transcription. A full interview recorded on a phone (45–90 min, tens of MB) blows past
+// Whisper's 25 MB / single-request limit, so we re-encode to mono 16 kHz MP3 and time-slice into
+// SEGMENT_SEC chunks with ffmpeg, transcribe each chunk, then stitch the text and word timings (with
+// per-chunk offsets) back into one transcript. The original upload is still kept as one asset.
+const SEGMENT_SEC = 600 // 10-min chunks: ~3.6 MB each at mono/16 kHz/48 kbps, well under the limit
+const longUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 300 * 1024 * 1024 } })
+
+/** Run the bundled static ffmpeg with the given args; resolve on exit 0, reject with stderr tail. */
+function runFfmpeg(args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!ffmpegPath) return reject(new Error('ffmpeg binary unavailable'))
+    const proc = spawn(ffmpegPath, args, { stdio: ['ignore', 'ignore', 'pipe'] })
+    let stderr = ''
+    proc.stderr.on('data', (d) => {
+      stderr += d.toString()
+    })
+    proc.on('error', reject)
+    proc.on('close', (code) =>
+      code === 0 ? resolve() : reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-500)}`)),
+    )
+  })
+}
+
+interface TranscriptSegment {
+  index: number
+  startSec: number
+  durationSec: number
+  text: string
+}
+
+// POST /api/llm/transcribe-long (multipart: file, optional sessionId)
+//   → { transcript, assetId, segments, diarized, utterances }
+// Prefers Deepgram (diarized, whole-file) when a Deepgram key is available; otherwise falls back to
+// Whisper with ffmpeg chunking (no speaker labels). Either key alone is enough to transcribe.
+llm.post('/transcribe-long', longUpload.single('file'), async (req, res) => {
+  const file = req.file
+  if (!file) return res.status(400).json({ error: 'file is required' })
+  const deepgramKey = (req.header('x-deepgram-key') || DEEPGRAM_KEY).trim()
+  const openaiKey = (req.header('x-openai-key') || OPENAI_KEY).trim()
+  if (!deepgramKey && !openaiKey) {
+    return res.status(503).json({
+      error: 'No transcription key. Add a Deepgram key (speaker separation) or an OpenAI key in Settings.',
+    })
+  }
+
+  const sessionId = req.body.sessionId ? String(req.body.sessionId) : null
+  const assetId = await storeRecordingAsset(file, sessionId)
+
+  // 1) Deepgram path — diarized, single request, no chunking.
+  if (deepgramKey) {
+    try {
+      const dg = await deepgramTranscribe(file.buffer, file.mimetype, deepgramKey)
+      return res.json({
+        transcript: { text: dg.text, words: dg.words, durationSec: dg.durationSec },
+        assetId,
+        segments: [],
+        diarized: true,
+        utterances: dg.utterances,
+      })
+    } catch (e) {
+      const err = e as WhisperError
+      // With no Whisper fallback available, surface Deepgram's error; otherwise fall through to it.
+      if (!openaiKey) return res.status(err.status || 502).json({ error: err.message })
+      console.warn('[llm] deepgram failed, falling back to whisper:', err.message)
+    }
+  }
+
+  // 2) Whisper + ffmpeg fallback — no diarization.
+  if (!ffmpegPath) {
+    return res.status(500).json({ error: 'Audio processing is unavailable (ffmpeg not found on the server).' })
+  }
+  const dir = await mkdtemp(join(tmpdir(), 'lull-transcribe-'))
+  try {
+    const inPath = join(dir, 'input')
+    await writeFile(inPath, file.buffer)
+    // Downmix to mono 16 kHz MP3 and segment by time. -vn drops any video track (phone clips, screen
+    // recordings); audio segments split exactly on time, no keyframe alignment needed.
+    await runFfmpeg([
+      '-i', inPath,
+      '-vn', '-ac', '1', '-ar', '16000', '-c:a', 'libmp3lame', '-b:a', '48k',
+      '-f', 'segment', '-segment_time', String(SEGMENT_SEC),
+      join(dir, 'chunk-%03d.mp3'),
+    ])
+
+    const chunkNames = (await readdir(dir)).filter((f) => f.startsWith('chunk-')).sort()
+    if (!chunkNames.length) {
+      return res.status(502).json({ error: 'Could not read any audio from that file. Is it a valid recording?' })
+    }
+
+    let fullText = ''
+    const words: WhisperWord[] = []
+    const segments: TranscriptSegment[] = []
+    let offset = 0 // running start time (sec) for the current chunk
+    for (const name of chunkNames) {
+      const buf = await readFile(join(dir, name))
+      const result = await whisperTranscribe(buf, 'audio/mpeg', name, openaiKey)
+      if (result.text) fullText += (fullText ? ' ' : '') + result.text
+      for (const w of result.words) {
+        words.push({ word: w.word, start: (w.start ?? 0) + offset, end: (w.end ?? 0) + offset })
+      }
+      const dur = result.duration ?? SEGMENT_SEC
+      segments.push({ index: segments.length, startSec: offset, durationSec: dur, text: result.text })
+      offset += dur
+    }
+
+    const transcript = { text: fullText, words, durationSec: offset || null }
+    res.json({ transcript, assetId, segments, diarized: false, utterances: [] })
+  } catch (e) {
+    if (e instanceof WhisperError) return res.status(e.status || 502).json({ error: e.message })
+    console.error('[llm] long transcription failed', e)
+    return res.status(500).json({ error: (e as Error)?.message || 'Long transcription failed.' })
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {})
+  }
 })

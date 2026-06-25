@@ -46,7 +46,7 @@ export default function SysDesignReport({
   stageLabel = (id) => getStage(id).label,
 }: SysDesignReportProps) {
   if (!report) return null
-  const { overall, perStage = [], toReachHigher = [], topPriorities = [], referenceSolution } = report
+  const { overall, perStage = [], toReachHigher = [], topPriorities = [], referenceSolution, complexity } = report
 
   return (
     <div className="space-y-5">
@@ -125,6 +125,46 @@ export default function SysDesignReport({
           ))}
         </div>
       </div>
+
+      {complexity && (
+        <div className="rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-5 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-stone-700">Complexity analysis</h3>
+            <span
+              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                complexity.matchedOptimal ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+              }`}
+            >
+              {complexity.matchedOptimal ? 'Optimal' : 'Below optimal'}
+            </span>
+          </div>
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="rounded-lg border border-stone-200 bg-white p-3">
+              <div className="text-[11px] font-medium uppercase tracking-wide text-stone-400">Your solution</div>
+              <div className="mt-1.5 flex items-baseline justify-between text-sm">
+                <span className="text-stone-500">Time</span>
+                <span className="font-mono font-semibold text-stone-800">{complexity.achievedTime}</span>
+              </div>
+              <div className="mt-1 flex items-baseline justify-between text-sm">
+                <span className="text-stone-500">Space</span>
+                <span className="font-mono font-semibold text-stone-800">{complexity.achievedSpace}</span>
+              </div>
+            </div>
+            <div className="rounded-lg border border-stone-200 bg-stone-50 p-3">
+              <div className="text-[11px] font-medium uppercase tracking-wide text-stone-400">Optimal</div>
+              <div className="mt-1.5 flex items-baseline justify-between text-sm">
+                <span className="text-stone-500">Time</span>
+                <span className="font-mono font-semibold text-stone-700">{complexity.optimalTime}</span>
+              </div>
+              <div className="mt-1 flex items-baseline justify-between text-sm">
+                <span className="text-stone-500">Space</span>
+                <span className="font-mono font-semibold text-stone-700">{complexity.optimalSpace}</span>
+              </div>
+            </div>
+          </div>
+          {complexity.analysis && <p className="mt-3 text-sm text-stone-600">{complexity.analysis}</p>}
+        </div>
+      )}
 
       {topPriorities.length > 0 && (
         <div className="rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-5 shadow-sm">

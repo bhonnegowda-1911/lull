@@ -1,3 +1,5 @@
+import { loadCustomSysDesignProblems } from '../../lib/sysdesign/customProblems'
+
 // System-design problem library. Each problem is DATA. The `hints` are the hybrid grading
 // reference: a few high-signal pointers per stage that the interviewer/grader LLM reasons
 // from — the analog of the behavioral prompts' tip/trap/avoid. They are deliberately short:
@@ -1116,7 +1118,9 @@ export const PROBLEMS: Problem[] = [
 export const DEFAULT_PROBLEM = PROBLEMS[0]
 
 export function getProblem(id: string): Problem {
-  return PROBLEMS.find((p) => p.id === id) || DEFAULT_PROBLEM
+  // Curated library first, then any user-generated problems (src/lib/sysdesign/customProblems.ts),
+  // which carry their own per-stage hints and so grade through the same staged pipeline.
+  return PROBLEMS.find((p) => p.id === id) || loadCustomSysDesignProblems().find((p) => p.id === id) || DEFAULT_PROBLEM
 }
 
 // Compact catalog (id + title + one-line statement) the JD→problem SELECTOR ranks over. The selector
@@ -1124,5 +1128,5 @@ export function getProblem(id: string): Problem {
 // problem that grades on its own hand-authored hints — the LLM maps business domain → known problem,
 // it never invents the problem or its answer key.
 export function problemCatalog(): { id: string; title: string; statement: string }[] {
-  return PROBLEMS.map((p) => ({ id: p.id, title: p.title, statement: p.statement }))
+  return [...PROBLEMS, ...loadCustomSysDesignProblems()].map((p) => ({ id: p.id, title: p.title, statement: p.statement }))
 }

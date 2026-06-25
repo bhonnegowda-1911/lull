@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { STAGES, getStage, stageIndex, nextStage, FIRST_STAGE, LEVELS } from '../data/sysdesign/stages'
 import { PROBLEMS, getProblem, DEFAULT_PROBLEM, problemCatalog } from '../data/sysdesign/problems'
 import { candidateDecisions, type Turn } from '../lib/sysdesign/conversation'
-import { reviveSession, sanitize, type SessionState } from '../lib/sysdesign/persistence'
+import { reviveSession, sanitize, type SessionState, type VoiceClip } from '../lib/sysdesign/persistence'
+import { speechMetrics } from '../lib/sysdesign/speech'
 
 describe('system-design stages', () => {
   it('starts at functional requirements and ends at deep dives', () => {
@@ -101,9 +102,10 @@ describe('session persistence (resume + hydrate)', () => {
     report: null,
     error: null,
     attachments: ['asset-1'],
+    config: { targetLevel: 'staff', style: 'relaxed' },
   }
 
-  it('round-trips an in-progress interview (id/attachments preserved)', () => {
+  it('round-trips an in-progress interview (id/attachments/config preserved)', () => {
     const revived = reviveSession(JSON.stringify(base))
     expect(revived?.id).toBe('sess-1')
     expect(revived?.problemId).toBe(base.problemId)
@@ -111,6 +113,12 @@ describe('session persistence (resume + hydrate)', () => {
     expect(revived?.sessions[STAGES[0].id].transcript).toHaveLength(1)
     expect(revived?.completed[STAGES[0].id]).toBe('done')
     expect(revived?.attachments).toEqual(['asset-1'])
+    expect(revived?.config).toEqual({ targetLevel: 'staff', style: 'relaxed' })
+  })
+
+  it('defaults config when an older session has none', () => {
+    const { config: _omit, ...noConfig } = base
+    expect(reviveSession(JSON.stringify(noConfig))?.config).toEqual({ targetLevel: 'senior', style: 'balanced' })
   })
 
   it('drops in-flight LLM state so the user lands on something actionable', () => {
@@ -139,5 +147,61 @@ describe('session persistence (resume + hydrate)', () => {
     expect(sanitize(null)).toBeNull()
     expect(reviveSession(JSON.stringify({ ...base, problemId: null }))).toBeNull()
     expect(reviveSession(JSON.stringify({ ...base, currentIndex: 999 }))).toBeNull()
+  })
+
+  it('preserves voice clips and completedAt, dropping malformed clips', () => {
+    const withClips = {
+      ...base,
+      completedAt: 1_700_000_600_000,
+      voiceClips: [
+        { assetId: 'a1', stageId: STAGES[0].id, durationSec: 12, text: 'hi' },
+        { stageId: STAGES[0].id, durationSec: 5, text: 'no asset id' }, // dropped
+      ],
+    }
+    const revived = reviveSession(JSON.stringify(withClips))
+    expect(revived?.completedAt).toBe(1_700_000_600_000)
+    expect(revived?.voiceClips).toHaveLength(1)
+    expect(revived?.voiceClips?.[0].assetId).toBe('a1')
+  })
+
+  it('defaults voiceClips to an empty array and leaves completedAt undefined for older sessions', () => {
+    const revived = reviveSession(JSON.stringify(base))
+    expect(revived?.voiceClips).toEqual([])
+    expect(revived?.completedAt).toBeUndefined()
+  })
+})
+
+describe('speech metrics (delivery)', () => {
+  const clip = (text: string, durationSec: number | null): VoiceClip => ({
+    assetId: `a-${Math.random()}`,
+    stageId: STAGES[0].id,
+    durationSec,
+    text,
+  })
+
+  it('returns null when there are no clips', () => {
+    expect(speechMetrics([])).toBeNull()
+  })
+
+  it('computes words per minute over total spoken duration', () => {
+    // 6 words across 60s spoken -> 6 wpm.
+    const m = speechMetrics([clip('one two three', 30), clip('four five six', 30)])
+    expect(m?.wordCount).toBe(6)
+    expect(m?.durationSec).toBe(60)
+    expect(m?.wpm).toBe(6)
+    expect(m?.clipCount).toBe(2)
+  })
+
+  it('counts fillers across the combined transcript with a per-minute rate', () => {
+    const m = speechMetrics([clip('um so like yeah', 60)])
+    expect(m?.filler.total).toBeGreaterThan(0)
+    expect(m?.filler.perMinute).not.toBeNull()
+  })
+
+  it('leaves wpm null when no clip has a usable duration', () => {
+    const m = speechMetrics([clip('a few words here', null)])
+    expect(m?.durationSec).toBe(0)
+    expect(m?.wpm).toBeNull()
+    expect(m?.filler.perMinute).toBeNull()
   })
 })

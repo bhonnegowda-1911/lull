@@ -6,7 +6,7 @@
 // Every call degrades gracefully: if the backend is unreachable the app keeps working from
 // its in-memory / localStorage state, it just won't have durable history.
 
-const BASE = import.meta.env.VITE_API_BASE ?? ''
+import { API_BASE as BASE } from './api'
 
 export type SessionKind = 'behavioral' | 'sysdesign' | 'build' | (string & {})
 export type SessionStatus = 'in_progress' | 'completed'

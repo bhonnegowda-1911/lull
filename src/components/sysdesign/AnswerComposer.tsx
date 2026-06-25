@@ -2,22 +2,39 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useApiKeys } from '../../context/ApiKeyContext'
 import { transcribe } from '../../lib/transcribe'
 
-// Voice answers in a system-design turn are transient (transcribed into the textarea, not kept
-// as a recording), so we don't store them as assets — only the transcript text is used.
-
 // Text + voice composer for one conversation turn. The candidate can type, or push-to-talk:
 // recording stops -> Whisper transcribes -> text is appended to the textarea so they can
-// edit before sending. Voice and text are one merged answer (not two channels).
+// edit before sending. Voice and text are one merged answer (not two channels). The recording
+// is also kept (onClip) so it can be replayed in the report and scored for delivery (pace,
+// fillers) — the transcribe gateway already stores the original take and returns its asset id.
+
+/** A captured voice take: stored recording + its spoken length and transcript. */
+export interface AnswerClip {
+  assetId: string
+  durationSec: number | null
+  text: string
+}
 
 interface AnswerComposerProps {
   onSubmit: (text: string) => void
   disabled?: boolean
   placeholder?: string
+  /** Optionally lift the draft so another surface (e.g. the maximized whiteboard's mic) can
+   *  append to the same answer. Uncontrolled (internal state) when omitted. */
+  value?: string
+  onValueChange?: (text: string) => void
+  /** Session to link stored recordings to (so they show up under this interview's history). */
+  sessionId?: string
+  /** Called once per recorded take with the stored recording, for replay + delivery scoring. */
+  onClip?: (clip: AnswerClip) => void
 }
 
-export default function AnswerComposer({ onSubmit, disabled, placeholder }: AnswerComposerProps) {
+export default function AnswerComposer({ onSubmit, disabled, placeholder, value, onValueChange, sessionId, onClip }: AnswerComposerProps) {
   const { hasOpenai } = useApiKeys()
-  const [text, setText] = useState('')
+  const [internal, setInternal] = useState('')
+  const controlled = value !== undefined
+  const text = controlled ? value : internal
+  const setText = (next: string) => (controlled ? onValueChange?.(next) : setInternal(next))
   const [recording, setRecording] = useState(false)
   const [transcribing, setTranscribing] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -81,10 +98,12 @@ export default function AnswerComposer({ onSubmit, disabled, placeholder }: Answ
     setTranscribing(true)
     setError(null)
     try {
-      const { transcript } = await transcribe(blob, { fallbackDurationSec: durationSec })
+      const { transcript, assetId } = await transcribe(blob, { fallbackDurationSec: durationSec, sessionId })
       const spoken = (transcript.text || '').trim()
-      if (spoken) setText((prev) => (prev ? `${prev} ${spoken}` : spoken))
-      else setError('No speech detected. Try again or type your answer.')
+      if (spoken) {
+        setText(text ? `${text} ${spoken}` : spoken)
+        if (assetId) onClip?.({ assetId, durationSec: transcript.durationSec ?? durationSec, text: spoken })
+      } else setError('No speech detected. Try again or type your answer.')
     } catch (e) {
       setError((e as Error)?.message || 'Transcription failed.')
     } finally {

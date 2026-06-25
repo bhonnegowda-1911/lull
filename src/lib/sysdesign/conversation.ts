@@ -1,5 +1,11 @@
 import { chatStructured } from '../llmClient'
 import { DEFAULT_MODEL } from '../models'
+import {
+  DEFAULT_INTERVIEW_CONFIG,
+  escalationEnabled,
+  personaDirective,
+  type InterviewConfig,
+} from '../interview/persona'
 import type { Stage } from '../../data/sysdesign/stages'
 import type { Problem } from '../../data/sysdesign/problems'
 
@@ -76,19 +82,22 @@ export const TURN_SCHEMA = {
   additionalProperties: false,
 }
 
-function systemPrompt(stage: Stage, problem: Problem): string {
-  const escalation = stage.escalate
-    ? `
+function systemPrompt(stage: Stage, problem: Problem, config: InterviewConfig): string {
+  const escalation =
+    stage.escalate && escalationEnabled(config.style)
+      ? `
 - ESCALATE when they're doing well: once they've handled the basics of this stage, raise the
   stakes with ONE realistic curveball to test how they adapt — a sudden 10x traffic spike, a
   regional outage, a hot/celebrity entity, or a new requirement. Introduce it naturally, then
   see if they evolve the design. This is how senior separates from staff; don't skip it for a
   strong candidate, but don't pile on more than a couple over the stage.`
-    : ''
+      : ''
 
-  return `You are a senior engineer conducting a system-design interview. You are warm but
-rigorous, and you behave like a real interviewer: you ask sharp, targeted follow-up
-questions and you do NOT do the candidate's thinking for them or dump the answer.
+  return `You are an engineer conducting a system-design interview. You behave like a real
+interviewer: you ask targeted follow-up questions and you do NOT do the candidate's thinking
+for them or dump the answer.
+
+${personaDirective(config)}
 
 THE PROBLEM:
 ${problem.statement}
@@ -155,11 +164,10 @@ function priorContextSection(priorStages: PriorStage[]): string {
   return lines.join('\n')
 }
 
-function buildUserMessage(
-  transcript: Turn[],
-  latest: string,
-  priorStages: PriorStage[],
-): string {
+// The stable, reused leading portion of the user turn — prior-stage context + the transcript so
+// far. It's a prefix of the next turn's prefix (the transcript only grows), so the gateway caches
+// it: turns after the first within a stage re-read it cheaply instead of re-sending at full price.
+function buildCachePrefix(transcript: Turn[], priorStages: PriorStage[]): string {
   const lines: string[] = []
   const prior = priorContextSection(priorStages)
   if (prior) lines.push(prior)
@@ -171,6 +179,21 @@ function buildUserMessage(
     }
     lines.push('')
   }
+  return lines.join('\n')
+}
+
+// The volatile tail of the user turn: the candidate's latest message, plus the whiteboard note when
+// an image is attached. Kept out of the cached prefix since it changes every turn.
+function buildLatest(latest: string, hasWhiteboard: boolean): string {
+  const lines: string[] = []
+  if (hasWhiteboard) {
+    lines.push(
+      "The attached image is the candidate's current whiteboard for this design. Read it as part",
+      'of their answer — the boxes/components, how they connect, and any labels — and probe it like',
+      'a real interviewer (unlabeled arrows, missing components, bottlenecks).',
+      '',
+    )
+  }
   lines.push(`CANDIDATE (just now): ${latest}`)
   return lines.join('\n')
 }
@@ -181,6 +204,10 @@ export interface RunStageTurnArgs {
   transcript?: Turn[]
   priorStages?: PriorStage[]
   message: string
+  /** Target level + interviewer style; defaults keep existing callers working. */
+  config?: InterviewConfig
+  /** Base64 PNG of the candidate's current whiteboard, so the interviewer can see the diagram. */
+  whiteboardImage?: string | null
   model?: string
   signal?: AbortSignal
 }
@@ -192,14 +219,18 @@ export async function runStageTurn({
   transcript = [],
   priorStages = [],
   message,
+  config = DEFAULT_INTERVIEW_CONFIG,
+  whiteboardImage = null,
   model = DEFAULT_MODEL,
   signal,
 }: RunStageTurnArgs): Promise<StageTurnResult> {
   const { parsed } = await chatStructured<Partial<StageTurnResult>>({
     provider: 'anthropic',
     model,
-    system: systemPrompt(stage, problem),
-    user: buildUserMessage(transcript, message, priorStages),
+    system: systemPrompt(stage, problem, config),
+    cachePrefix: buildCachePrefix(transcript, priorStages),
+    user: buildLatest(message, Boolean(whiteboardImage)),
+    images: whiteboardImage ? [whiteboardImage] : undefined,
     schema: TURN_SCHEMA,
     signal,
   })

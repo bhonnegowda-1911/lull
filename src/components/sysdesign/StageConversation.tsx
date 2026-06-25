@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import AnswerComposer from './AnswerComposer'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
+import AnswerComposer, { type AnswerClip } from './AnswerComposer'
 import StageTimer, { type PaceStatus } from './StageTimer'
 import type { Turn, TurnRole } from '../../lib/sysdesign/conversation'
 
@@ -49,6 +49,16 @@ interface StageConversationProps {
   onAdvance: () => void
   onSkip: () => void
   isLastStage: boolean
+  /** Optional custom input for this stage (e.g. the coding mode's code editor). When provided it
+   *  replaces the default text/voice composer; the caller owns submission. */
+  composer?: ReactNode
+  /** Optionally lift the default composer's draft so another surface (e.g. a maximized
+   *  whiteboard's mic) can append to the same answer. Ignored when a custom `composer` is given. */
+  draftValue?: string
+  onDraftChange?: (text: string) => void
+  /** Session to link recordings to, and a sink for each recorded take (replay + delivery scoring). */
+  sessionId?: string
+  onClip?: (clip: AnswerClip) => void
 }
 
 export default function StageConversation({
@@ -60,6 +70,11 @@ export default function StageConversation({
   onAdvance,
   onSkip,
   isLastStage,
+  composer,
+  draftValue,
+  onDraftChange,
+  sessionId,
+  onClip,
 }: StageConversationProps) {
   const endRef = useRef<HTMLDivElement | null>(null)
   const [pace, setPace] = useState<PaceStatus>('ok')
@@ -113,7 +128,16 @@ export default function StageConversation({
       </div>
 
       <div className="mt-4 border-t border-stone-100 pt-4">
-        <AnswerComposer onSubmit={onSubmit} disabled={thinking} />
+        {composer ?? (
+          <AnswerComposer
+            onSubmit={onSubmit}
+            disabled={thinking}
+            value={draftValue}
+            onValueChange={onDraftChange}
+            sessionId={sessionId}
+            onClip={onClip}
+          />
+        )}
         <div className="mt-3 flex items-center gap-2">
           <button
             type="button"

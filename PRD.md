@@ -1,4 +1,4 @@
-# Interview Coach — PRD (lean working doc)
+# Lull — PRD (lean working doc)
 
 **Type:** Living working doc — guides what to build/cut next. Not a portfolio piece.
 **User:** One person (me). Single-user, private practice.
@@ -54,7 +54,10 @@ time** — without it, "am I improving?" is unanswerable, which is the whole poi
 
 ## 3. Non-goals (what I will NOT build)
 
-- Not a job tracker or scheduler.
+- **Revised 2026-06-23:** lightweight, *single-job* application tracking + interview-date prep
+  scheduling *is now in scope* — tied to a target JD (pipeline status, scheduled rounds, a dated
+  countdown prep plan grounded in that JD's picks). A general-purpose multi-job ATS/kanban or a
+  standalone calendar remains a non-goal.
 - **Revised 2026-06-21:** resume work *is now in scope*, but narrowly — a resume↔JD **fit
   analyzer** (shipped) and a JD-targeted **generator grounded in my own projects/stories**
   (Phase 2). A generic, ungrounded "resume builder" remains a non-goal.
