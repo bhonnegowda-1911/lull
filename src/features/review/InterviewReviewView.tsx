@@ -14,6 +14,7 @@ import {
 } from '../../lib/sessionStore'
 import type { InterviewReviewSession } from '../../types'
 import ReviewReport from './ReviewReport'
+import ReviewStories from './ReviewStories'
 import EmptyState from '../../components/EmptyState'
 import { stagger, staggerItem } from '../../lib/ui/motion'
 
@@ -47,6 +48,8 @@ export default function InterviewReviewView({ onNeedKeys }: { onNeedKeys?: () =>
   const [stage, setStage] = useState<Stage>('idle')
   const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<InterviewReviewSession | null>(null)
+  // Session id of the shown review, for linking extracted stories back to their source.
+  const [resultId, setResultId] = useState<string | null>(null)
   const [history, setHistory] = useState<SessionSummary[]>([])
   const abortRef = useRef<AbortController | null>(null)
 
@@ -64,8 +67,11 @@ export default function InterviewReviewView({ onNeedKeys }: { onNeedKeys?: () =>
 
   // Opened from History: show that saved review directly.
   useEffect(() => {
-    const session = (location.state as { session?: { payload?: InterviewReviewSession } } | null)?.session
-    if (session?.payload?.review) setResult(session.payload)
+    const session = (location.state as { session?: { id?: string; payload?: InterviewReviewSession } } | null)?.session
+    if (session?.payload?.review) {
+      setResult(session.payload)
+      setResultId(session.id ?? null)
+    }
   }, [location.state])
 
   useEffect(() => () => abortRef.current?.abort(), [])
@@ -103,6 +109,7 @@ export default function InterviewReviewView({ onNeedKeys }: { onNeedKeys?: () =>
 
   function reset() {
     setResult(null)
+    setResultId(null)
     setFile(null)
     setLabel('')
     setError(null)
@@ -154,6 +161,7 @@ export default function InterviewReviewView({ onNeedKeys }: { onNeedKeys?: () =>
         payload,
       })
       setResult(payload)
+      setResultId(sessionId)
       void loadHistory()
     } catch (e) {
       if ((e as Error)?.name === 'AbortError') return
@@ -168,6 +176,7 @@ export default function InterviewReviewView({ onNeedKeys }: { onNeedKeys?: () =>
     const session = await getSession<InterviewReviewSession>(row.id)
     if (session?.payload?.review) {
       setResult(session.payload)
+      setResultId(row.id)
       window.scrollTo({ top: 0, behavior: 'smooth' })
     }
   }
@@ -199,6 +208,13 @@ export default function InterviewReviewView({ onNeedKeys }: { onNeedKeys?: () =>
           durationSec={result.durationSec}
           label={result.label}
           diarized={result.diarized}
+        />
+        <ReviewStories
+          transcript={result.transcript}
+          label={result.label}
+          sessionId={resultId}
+          hasAnthropic={hasAnthropic}
+          onNeedKeys={onNeedKeys}
         />
       </div>
     )

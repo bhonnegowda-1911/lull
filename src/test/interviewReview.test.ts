@@ -20,7 +20,9 @@ vi.mock('../lib/llmClient', () => ({
 
 import { transcribeLong, TranscribeError } from '../lib/transcribe'
 import { reviewInterview } from '../lib/reviewInterview'
+import { extractStoriesFromInterview, INTERVIEW_STORIES_SCHEMA } from '../lib/stories/extractFromInterview'
 import { STAR_CRITERIA } from '../data/criteria'
+import { GEN_MODEL } from '../lib/models'
 import { INTERVIEW_REVIEW_MODEL, INTERVIEW_REVIEW_SCHEMA } from '../data/interviewReviewCriteria'
 
 // ---- Fixtures -------------------------------------------------------------
@@ -221,6 +223,35 @@ describe('interview review pipeline (end to end)', () => {
     expect(payload.assetId).toBe('asset-123')
     expect(payload.durationSec).toBe(1140)
     expect(payload.review.exchanges[0].betterAnswer).toContain('Open with the result')
+  })
+})
+
+// ---- Mining stories out of the interview transcript -----------------------
+
+describe('extractStoriesFromInterview', () => {
+  it('distills the transcript into story drafts via the GEN model + stories schema', async () => {
+    const draft = {
+      title: 'Cut billing latency 40%',
+      roleRef: 'Acme',
+      star: { situation: 's', task: 't', actions: ['a'], result: 'r', takeaway: '' },
+      impact: { metrics: ['40% latency'], ownership: 'i', blastRadius: 'team' },
+      themes: [],
+      trueCeilingLevel: 'senior',
+    }
+    chatStructuredMock.mockResolvedValueOnce({ parsed: { stories: [draft] }, raw: {} })
+
+    const stories = await extractStoriesFromInterview({ transcript: STITCHED_TRANSCRIPT, label: 'Acme — HM' })
+
+    expect(stories).toEqual([draft])
+    const req = chatStructuredMock.mock.calls[0][0] as Record<string, unknown>
+    expect(req.model).toBe(GEN_MODEL)
+    expect(req.schema).toBe(INTERVIEW_STORIES_SCHEMA)
+    expect(req.user as string).toContain('payments migration')
+  })
+
+  it('returns an empty array when the interview has no stories', async () => {
+    chatStructuredMock.mockResolvedValueOnce({ parsed: { stories: [] }, raw: {} })
+    expect(await extractStoriesFromInterview({ transcript: STITCHED_TRANSCRIPT })).toEqual([])
   })
 })
 

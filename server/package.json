@@ -1,9 +1,9 @@
 {
-  "name": "career-coach-server",
+  "name": "lull-server",
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "Backend for the career-coaching platform: generic session store, media assets (MinIO), and an LLM gateway.",
+  "description": "Backend for Lull (interview prep): generic session store, media assets (MinIO), and an LLM gateway.",
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
