@@ -51,7 +51,10 @@ export async function generateCodingProblem(spec: CodingProblemSpec, signal?: Ab
     system: CODING_GEN_PROBLEM_CRITERIA.systemPrompt,
     user,
     schema: CODING_GEN_PROBLEM_CRITERIA.schema,
-    maxTokens: 2500,
+    // Adaptive thinking spends tokens before the output, and max_tokens caps the TOTAL (thinking +
+    // output). The authored problem itself is small, but thinking can be large — so give a generous
+    // ceiling, well clear of any thinking spend, or the JSON truncates and fails to parse.
+    maxTokens: 12000,
     thinking: 'adaptive',
     signal,
   })

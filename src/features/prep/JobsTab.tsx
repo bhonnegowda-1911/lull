@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { ChevronDown } from 'lucide-react'
 import { listJobs, saveJob, deleteJob, emptyJob } from '../../lib/jobStore'
 import { parseJobDescription } from '../../lib/resume/parseJob'
 import type { JobDescription } from '../../types'
@@ -15,6 +16,7 @@ export default function JobsTab() {
   const [rawText, setRawText] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [openId, setOpenId] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -97,31 +99,111 @@ export default function JobsTab() {
         <p className="text-sm text-stone-500">No job descriptions yet. Paste one above — it becomes an application on the Pipeline.</p>
       ) : (
         <ul className="space-y-2">
-          {jobs.map((j) => (
-            <li key={j.id} className="rounded-lg border border-stone-200 p-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium text-stone-800">{j.title || 'Untitled'}</span>
-                    {j.company && <span className="text-xs text-stone-400">{j.company}</span>}
-                    {j.parsed && (
-                      <>
-                        <span className="rounded-full bg-terracotta-100 px-2 py-0.5 text-[11px] capitalize text-terracotta-700">{j.parsed.seniority}</span>
-                        <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] text-stone-600">
-                          {j.parsed.mustHaveSkills.length} must-haves
-                        </span>
-                      </>
-                    )}
-                  </div>
+          {jobs.map((j) => {
+            const open = openId === j.id
+            return (
+              <li key={j.id} className="rounded-lg border border-stone-200">
+                <div className="flex items-start justify-between gap-3 p-3">
+                  <button
+                    type="button"
+                    onClick={() => setOpenId(open ? null : j.id)}
+                    aria-expanded={open}
+                    className="flex min-w-0 flex-1 items-start gap-2 text-left"
+                  >
+                    <ChevronDown className={`mt-0.5 h-4 w-4 shrink-0 text-stone-400 transition-transform ${open ? 'rotate-180' : ''}`} />
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-medium text-stone-800">{j.title || 'Untitled'}</span>
+                      {j.company && <span className="text-xs text-stone-400">{j.company}</span>}
+                      {j.parsed && (
+                        <>
+                          <span className="rounded-full bg-terracotta-100 px-2 py-0.5 text-[11px] capitalize text-terracotta-700">{j.parsed.seniority}</span>
+                          <span className="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] text-stone-600">
+                            {j.parsed.mustHaveSkills.length} must-haves
+                          </span>
+                        </>
+                      )}
+                    </span>
+                  </button>
+                  <button type="button" onClick={() => remove(j)} className="shrink-0 rounded px-2 py-1 text-xs text-stone-400 hover:bg-red-50 hover:text-red-600">
+                    Delete
+                  </button>
                 </div>
-                <button type="button" onClick={() => remove(j)} className="shrink-0 rounded px-2 py-1 text-xs text-stone-400 hover:bg-red-50 hover:text-red-600">
-                  Delete
-                </button>
-              </div>
-            </li>
-          ))}
+                {open && <JobDetails job={j} />}
+              </li>
+            )
+          })}
         </ul>
       )}
+    </div>
+  )
+}
+
+// The parsed structure + original text for one saved job, revealed when its row is expanded.
+function JobDetails({ job }: { job: JobDescription }) {
+  const p = job.parsed
+  return (
+    <div className="space-y-4 border-t border-stone-100 px-3 pb-3 pt-3">
+      {p ? (
+        <>
+          {p.mustHaveSkills.length > 0 && (
+            <Section label="Must-have skills">
+              <div className="flex flex-wrap gap-1.5">
+                {p.mustHaveSkills.map((s, i) => (
+                  <span key={i} className="rounded-full bg-terracotta-50 px-2 py-0.5 text-[11px] text-terracotta-700 ring-1 ring-terracotta-200">
+                    {s.skill}
+                    {s.category && <span className="text-terracotta-400"> · {s.category}</span>}
+                  </span>
+                ))}
+              </div>
+            </Section>
+          )}
+          {p.niceToHaveSkills.length > 0 && (
+            <Section label="Nice-to-have skills">
+              <div className="flex flex-wrap gap-1.5">
+                {p.niceToHaveSkills.map((s, i) => (
+                  <span key={i} className="rounded-full bg-stone-100 px-2 py-0.5 text-[11px] text-stone-600">{s}</span>
+                ))}
+              </div>
+            </Section>
+          )}
+          {p.responsibilities.length > 0 && (
+            <Section label="Responsibilities">
+              <ul className="list-disc space-y-0.5 pl-5 text-sm text-stone-600">
+                {p.responsibilities.map((r, i) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
+            </Section>
+          )}
+          {p.keywords.length > 0 && (
+            <Section label="ATS keywords">
+              <div className="flex flex-wrap gap-1.5">
+                {p.keywords.map((k, i) => (
+                  <span key={i} className="rounded bg-stone-100 px-1.5 py-0.5 text-[11px] text-stone-500">{k}</span>
+                ))}
+              </div>
+            </Section>
+          )}
+        </>
+      ) : (
+        <p className="text-xs text-stone-400">This job hasn't been parsed into structure.</p>
+      )}
+      {job.rawText.trim() && (
+        <Section label="Original job description">
+          <p className="max-h-64 overflow-y-auto whitespace-pre-wrap rounded-md bg-stone-50 p-3 text-xs text-stone-600">
+            {job.rawText.trim()}
+          </p>
+        </Section>
+      )}
+    </div>
+  )
+}
+
+function Section({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-stone-500">{label}</div>
+      {children}
     </div>
   )
 }

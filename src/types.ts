@@ -347,8 +347,13 @@ export type ApplicationStatus =
 export interface Application {
   status: ApplicationStatus
   rounds: InterviewRoundInstance[]
-  /** Snapshot of the last resume↔JD fit run, so the journey can show fit → resume → applied. */
-  fit?: { score: number; verdict: FitVerdict; at: string } | null
+  /**
+   * The last resume↔JD fit run, cached so the breakdown re-renders on return without another LLM
+   * call. `score`/`verdict`/`at` are the cheap snapshot other steps read; `result` is the full run
+   * and `signature` fingerprints the inputs it scored, so a stale check (resume/JD/stories changed)
+   * can be flagged. `result`/`signature` are optional for legacy rows that only stored the snapshot.
+   */
+  fit?: { score: number; verdict: FitVerdict; at: string; result?: ResumeFit; signature?: string } | null
   decisionNote: string
 }
 

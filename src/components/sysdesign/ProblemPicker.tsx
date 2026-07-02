@@ -1,6 +1,7 @@
 import { useMemo, useState, type ReactNode } from 'react'
 import { Tag, Trash2, X } from 'lucide-react'
 import { PROBLEMS } from '../../data/sysdesign/problems'
+import Markdown from '../Markdown'
 
 // Landing view for an interview mode: choose a problem to start. Used by system-design and,
 // with a different problem list/copy, by the Build mode — so the problem list and intro are
@@ -155,7 +156,7 @@ export default function ProblemPicker({
                         </span>
                       )}
                     </div>
-                    <p className="mt-1 text-sm text-stone-500">{p.statement}</p>
+                    <Markdown inline className="mt-1 block text-sm text-stone-500">{p.statement}</Markdown>
                     {p.tags && p.tags.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1">
                         {p.tags.map((t) => (

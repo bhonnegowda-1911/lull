@@ -1,5 +1,6 @@
 import { LEVELS, LEVEL_LABEL, getStage, type SysDesignLevel } from '../../data/sysdesign/stages'
 import type { SysDesignReport as SysDesignReportData } from '../../lib/sysdesign/report'
+import { formatDuration, pace, type PaceStatus } from '../../lib/interview/stageTiming'
 
 // Final leveling report for a completed system-design session. Mirrors the behavioral
 // app's level-signal card: an overall level on a ladder, per-stage ratings, how to reach
@@ -38,15 +39,37 @@ interface SysDesignReportProps {
   /** Resolve a stage id to its display label. Defaults to the system-design stages; the Build
    *  mode passes its own so this renderer is shared across both leveling reports. */
   stageLabel?: (id: string) => string
+  /** Actual time spent per stage id (ms). When present, each stage shows expected-vs-took. */
+  timings?: Record<string, number>
+  /** Expected minute budget for a stage id. Defaults to the system-design stages. */
+  stageExpectedMin?: (id: string) => number | undefined
+}
+
+// Pace-chip styling for the per-stage expected-vs-took read.
+const PACE_STYLE: Record<PaceStatus, string> = {
+  under: 'bg-green-100 text-green-700',
+  on: 'bg-stone-100 text-stone-600',
+  over: 'bg-amber-100 text-amber-700',
+  'way-over': 'bg-red-100 text-red-700',
 }
 
 export default function SysDesignReport({
   report,
   onRestart,
   stageLabel = (id) => getStage(id).label,
+  timings,
+  stageExpectedMin = (id) => getStage(id).minutes,
 }: SysDesignReportProps) {
   if (!report) return null
   const { overall, perStage = [], toReachHigher = [], topPriorities = [], referenceSolution, complexity } = report
+
+  // Session timing totals, summed over the stages actually engaged (>0ms). Driven by the timings map
+  // itself rather than perStage, since Build groups perStage by rubric dimension (not by its timed
+  // stages) — there the per-row chips below simply don't match and only this total shows.
+  const timingEntries = timings ? Object.entries(timings).filter(([, ms]) => ms > 0) : []
+  const showTiming = timingEntries.length > 0
+  const totalActualMs = timingEntries.reduce((a, [, ms]) => a + ms, 0)
+  const totalExpectedMin = timingEntries.reduce((a, [id]) => a + (stageExpectedMin(id) ?? 0), 0)
 
   return (
     <div className="space-y-5">
@@ -98,9 +121,21 @@ export default function SysDesignReport({
       </div>
 
       <div className="rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-5 shadow-sm">
-        <h3 className="text-sm font-semibold text-stone-700">Stage by stage</h3>
+        <div className="flex items-baseline justify-between gap-2">
+          <h3 className="text-sm font-semibold text-stone-700">Stage by stage</h3>
+          {showTiming && (
+            <span className="text-xs text-stone-500" title="Total time you took vs. the expected budget for the stages you reached">
+              <span className="font-semibold text-stone-700">{formatDuration(totalActualMs)}</span>
+              {totalExpectedMin > 0 && <span className="text-stone-400"> / ~{totalExpectedMin}m expected</span>}
+            </span>
+          )}
+        </div>
         <div className="mt-3 divide-y divide-stone-100">
-          {perStage.map((s) => (
+          {perStage.map((s) => {
+            const actualMs = timings?.[s.stageId]
+            const expectedMin = stageExpectedMin(s.stageId)
+            const p = actualMs != null ? pace(actualMs, expectedMin) : null
+            return (
             <div key={s.stageId} className="py-3">
               <div className="flex items-center gap-2">
                 <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${ratingColor(s.rating)}`}>
@@ -113,6 +148,16 @@ export default function SysDesignReport({
                   {LEVEL_LABEL[s.level] || s.level}
                 </span>
               </div>
+              {p && (
+                <div className="mt-1 flex items-center gap-1.5 text-[11px]">
+                  <span className={`rounded px-1.5 py-0.5 font-medium ${PACE_STYLE[p.status]}`}>
+                    {formatDuration(actualMs!)}
+                    {expectedMin ? <span className="font-normal opacity-80"> / ~{expectedMin}m</span> : null}
+                  </span>
+                  {p.status === 'over' && <span className="text-amber-600">over budget</span>}
+                  {p.status === 'way-over' && <span className="text-red-600">well over budget</span>}
+                </div>
+              )}
               {s.summary && <p className="mt-1 text-sm text-stone-600">{s.summary}</p>}
               {s.gaps?.length > 0 && (
                 <ul className="mt-1 list-disc space-y-0.5 pl-5 text-xs text-stone-500">
@@ -122,7 +167,8 @@ export default function SysDesignReport({
                 </ul>
               )}
             </div>
-          ))}
+            )
+          })}
         </div>
       </div>
 

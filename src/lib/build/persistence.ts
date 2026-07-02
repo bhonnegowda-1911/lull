@@ -1,4 +1,5 @@
 import { BUILD_STAGES } from '../../data/build/stages'
+import { resumeClocks } from '../interview/stageTiming'
 import type { Coverage, Turn } from './conversation'
 import type { SysDesignReport } from '../sysdesign/report'
 
@@ -14,6 +15,10 @@ export interface BuildStageSession {
   transcript: Turn[]
   coverage: Coverage | null
   aligned: boolean
+  /** Wall-clock ms when this stage's live timer started; absent ⇒ not running. */
+  enteredAt?: number
+  /** Time banked on this stage so far — drives the report's expected-vs-took read. */
+  elapsedMs?: number
 }
 
 export interface BuildSessionState {
@@ -41,6 +46,11 @@ export function sanitize(input: unknown): BuildSessionState | null {
 
   // Keep a completed report if present; otherwise drop back into the live session.
   const phase: BuildPhase = s.phase === 'report' && s.report ? 'report' : 'session'
+  const sessions = resumeClocks(
+    s.sessions as Record<string, BuildStageSession>,
+    BUILD_STAGES[s.currentIndex]?.id,
+    phase === 'session',
+  )
 
   return {
     id: typeof s.id === 'string' && s.id ? s.id : crypto.randomUUID(),
@@ -48,7 +58,7 @@ export function sanitize(input: unknown): BuildSessionState | null {
     phase,
     problemId: s.problemId,
     currentIndex: s.currentIndex,
-    sessions: s.sessions as Record<string, BuildStageSession>,
+    sessions,
     completed: (s.completed as Record<string, true>) || {},
     thinking: false,
     report: s.report ?? null,

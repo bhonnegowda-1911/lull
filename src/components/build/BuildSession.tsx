@@ -4,7 +4,8 @@ import { useApiKeys } from '../../context/ApiKeyContext'
 import { celebrateBig } from '../../lib/ui/celebrate'
 import { track } from '../../lib/metrics/events'
 import { getBuildProblem, BUILD_PROBLEMS } from '../../data/build/problems'
-import { BUILD_STAGES } from '../../data/build/stages'
+import { BUILD_STAGES, getBuildStage } from '../../data/build/stages'
+import { enterStage, leaveStage, stageElapsedMs } from '../../lib/interview/stageTiming'
 import { dimensionLabel } from '../../data/build/rubric'
 import {
   runBuildTurn,
@@ -69,7 +70,7 @@ function reducer(state: State, action: Action): State {
         createdAt: Date.now(),
         phase: 'session',
         problemId: action.problemId,
-        sessions: { [BUILD_STAGES[0].id]: emptySession() },
+        sessions: { [BUILD_STAGES[0].id]: enterStage(emptySession()) },
       }
     case 'CANDIDATE_TURN': {
       const s = state.sessions[action.stageId] || emptySession()
@@ -109,11 +110,23 @@ function reducer(state: State, action: Action): State {
         ...state,
         currentIndex: nextIndex,
         completed: { ...state.completed, [stage.id]: true },
-        sessions: { ...state.sessions, [next.id]: state.sessions[next.id] || emptySession() },
+        sessions: {
+          ...state.sessions,
+          [stage.id]: leaveStage(state.sessions[stage.id] || emptySession()),
+          [next.id]: enterStage(state.sessions[next.id] || emptySession()),
+        },
       }
     }
-    case 'REPORTING':
-      return { ...state, phase: 'reporting', error: null }
+    case 'REPORTING': {
+      // Bank the final stage's clock (the last stage never ADVANCEs).
+      const cur = BUILD_STAGES[state.currentIndex]
+      return {
+        ...state,
+        phase: 'reporting',
+        error: null,
+        sessions: { ...state.sessions, [cur.id]: leaveStage(state.sessions[cur.id] || emptySession()) },
+      }
+    }
     case 'REPORT_DONE':
       return { ...state, phase: 'report', report: action.report }
     case 'REPORT_ERROR':
@@ -293,7 +306,13 @@ export default function BuildSession({ onNeedKeys }: { onNeedKeys?: () => void }
             Scored on the five rubric dimensions — weighted toward scoping and a running core.
           </p>
         </div>
-        <SysDesignReport report={state.report} onRestart={handleReset} stageLabel={dimensionLabel} />
+        <SysDesignReport
+          report={state.report}
+          onRestart={handleReset}
+          stageLabel={dimensionLabel}
+          stageExpectedMin={(id) => getBuildStage(id).minutes}
+          timings={Object.fromEntries(BUILD_STAGES.map((s) => [s.id, stageElapsedMs(state.sessions[s.id])]))}
+        />
       </div>
     )
   }

@@ -67,8 +67,8 @@ export default function ApplicationJourney() {
     await persist({ ...job, application: { ...app, rounds } })
   }
 
-  function onFit(fit: ResumeFit) {
-    updateApp({ ...app, fit: { score: fit.fitScore, verdict: fit.verdict, at: new Date().toISOString() } })
+  function onFit(fit: ResumeFit, signature: string) {
+    updateApp({ ...app, fit: { score: fit.fitScore, verdict: fit.verdict, at: new Date().toISOString(), result: fit, signature } })
   }
 
   if (loading) return <p className="text-sm text-stone-500">Loading…</p>

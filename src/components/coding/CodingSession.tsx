@@ -12,6 +12,8 @@ import {
 } from '../../lib/coding/customProblems'
 import { generateCodingProblem, type CodingProblemSpec } from '../../lib/coding/generateProblem'
 import ProblemGenerator, { type GenSpec } from '../ProblemGenerator'
+import Markdown from '../Markdown'
+import { enterStage, leaveStage, stageElapsedMs } from '../../lib/interview/stageTiming'
 import { STAGES, getStage, type CodeLanguage } from '../../data/coding/stages'
 import { runStageTurn, candidateDecisions, type Coverage, type PriorStage } from '../../lib/coding/conversation'
 import { generateReport, type CodingReport, type CodingStageSessionInput } from '../../lib/coding/report'
@@ -92,7 +94,7 @@ function reducer(state: State, action: Action): State {
         phase: 'interview',
         problemId: action.problemId,
         config: action.config,
-        sessions: { [STAGES[0].id]: emptySession() },
+        sessions: { [STAGES[0].id]: enterStage(emptySession()) },
       }
     case 'CANDIDATE_TURN': {
       const s = state.sessions[action.stageId] || emptySession()
@@ -132,15 +134,27 @@ function reducer(state: State, action: Action): State {
         ...state,
         currentIndex: nextIndex,
         completed: { ...state.completed, [stage.id]: action.how },
-        sessions: { ...state.sessions, [next.id]: state.sessions[next.id] || emptySession() },
+        sessions: {
+          ...state.sessions,
+          [stage.id]: leaveStage(state.sessions[stage.id] || emptySession()),
+          [next.id]: enterStage(state.sessions[next.id] || emptySession()),
+        },
       }
     }
     case 'SET_CODE':
       return { ...state, code: action.code }
     case 'SET_LANGUAGE':
       return { ...state, language: action.language }
-    case 'REPORTING':
-      return { ...state, phase: 'reporting', error: null }
+    case 'REPORTING': {
+      // Bank the final stage's clock (the last stage never ADVANCEs).
+      const cur = STAGES[state.currentIndex]
+      return {
+        ...state,
+        phase: 'reporting',
+        error: null,
+        sessions: { ...state.sessions, [cur.id]: leaveStage(state.sessions[cur.id] || emptySession()) },
+      }
+    }
     case 'REPORT_DONE':
       return { ...state, phase: 'report', report: action.report }
     case 'REPORT_ERROR':
@@ -379,7 +393,13 @@ export default function CodingSession({ onNeedKeys }: { onNeedKeys?: () => void 
           <div className="text-xs uppercase tracking-wide text-stone-400">Interview report</div>
           <div className="text-base font-semibold text-stone-900">{problem.title}</div>
         </div>
-        <SysDesignReport report={state.report} onRestart={handleReset} stageLabel={(id) => getStage(id).label} />
+        <SysDesignReport
+          report={state.report}
+          onRestart={handleReset}
+          stageLabel={(id) => getStage(id).label}
+          stageExpectedMin={(id) => getStage(id).minutes}
+          timings={Object.fromEntries(STAGES.map((s) => [s.id, stageElapsedMs(state.sessions[s.id])]))}
+        />
       </div>
     )
   }
@@ -420,7 +440,7 @@ export default function CodingSession({ onNeedKeys }: { onNeedKeys?: () => void 
               </span>
             </div>
           </div>
-          <p className="mt-2 text-sm text-stone-600">{problem.statement}</p>
+          <Markdown className="mt-2 text-sm text-stone-600">{problem.statement}</Markdown>
           {problem.examples.length > 0 && (
             <div className="mt-2 space-y-1">
               {problem.examples.map((ex, i) => (

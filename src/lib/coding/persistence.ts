@@ -1,5 +1,6 @@
 import { STAGES } from '../../data/coding/stages'
 import type { CodeLanguage } from '../../data/coding/stages'
+import { resumeClocks } from '../interview/stageTiming'
 import { sanitizeConfig, type InterviewConfig } from '../interview/persona'
 import type { Coverage, Turn } from './conversation'
 import type { CodingReport } from './report'
@@ -16,6 +17,10 @@ export interface StageSession {
   transcript: Turn[]
   coverage: Coverage | null
   aligned: boolean
+  /** Wall-clock ms when this stage's live timer started; absent ⇒ not running. */
+  enteredAt?: number
+  /** Time banked on this stage so far — drives the report's expected-vs-took read. */
+  elapsedMs?: number
 }
 
 export interface SessionState {
@@ -51,6 +56,11 @@ export function sanitize(input: unknown): SessionState | null {
   if (!s.sessions || typeof s.sessions !== 'object') return null
 
   const phase: Phase = s.phase === 'report' && s.report ? 'report' : 'interview'
+  const sessions = resumeClocks(
+    s.sessions as Record<string, StageSession>,
+    STAGES[s.currentIndex]?.id,
+    phase === 'interview',
+  )
 
   return {
     id: typeof s.id === 'string' && s.id ? s.id : crypto.randomUUID(),
@@ -58,7 +68,7 @@ export function sanitize(input: unknown): SessionState | null {
     phase,
     problemId: s.problemId,
     currentIndex: s.currentIndex,
-    sessions: s.sessions as Record<string, StageSession>,
+    sessions,
     completed: (s.completed as Record<string, Completion>) || {},
     thinking: false,
     report: s.report ?? null,

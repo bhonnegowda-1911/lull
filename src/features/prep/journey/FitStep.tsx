@@ -1,12 +1,14 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { listStories } from '../../../lib/storyStore'
-import { analyzeResumeFit } from '../../../lib/resume/fit'
+import { analyzeResumeFit, fitInputSignature } from '../../../lib/resume/fit'
 import Pending from '../../../components/Pending'
+import type { Story } from '../../../data/stories'
 import type { Application, JobDescription, ResumeFit } from '../../../types'
 
 // Step 1 of the application journey: score the current resume (+ stories) against this job. Fit is a
-// score + structured gaps, never a binary. The result snapshot is lifted to the parent (onFit) so
-// it persists on the application and gates the resume step. Extracted from the old MatchTab.
+// score + structured gaps, never a binary. The full result is lifted to the parent (onFit) so it's
+// cached on the application: the breakdown re-renders on return without another LLM call, and a
+// signature of the inputs lets us flag it stale when the resume/JD/stories changed. From MatchTab.
 
 const VERDICT_STYLE: Record<ResumeFit['verdict'], string> = {
   strong: 'bg-emerald-100 text-emerald-700',
@@ -29,26 +31,46 @@ interface Props {
   job: JobDescription
   resumeText: string
   savedFit: Application['fit']
-  onFit: (fit: ResumeFit) => void
+  onFit: (fit: ResumeFit, signature: string) => void
 }
 
 export default function FitStep({ job, resumeText, savedFit, onFit }: Props) {
   const [analyzing, setAnalyzing] = useState(false)
-  const [fit, setFit] = useState<ResumeFit | null>(null)
+  // Seed the view from the cached run so the breakdown shows immediately, no LLM call on return.
+  const [fit, setFit] = useState<ResumeFit | null>(savedFit?.result ?? null)
   const [error, setError] = useState<string | null>(null)
+  // Stories feed the grader (and the signature), so load them up front to detect a stale cache.
+  const [stories, setStories] = useState<Story[]>([])
 
   const noResume = resumeText.trim().length === 0
 
+  useEffect(() => {
+    void listStories().then(setStories)
+  }, [])
+
+  // Fingerprint of the current inputs; a cached run whose signature differs is stale (re-check).
+  const currentSignature = useMemo(
+    () => (job.parsed ? fitInputSignature({ resumeText, job: job.parsed, stories }) : null),
+    [resumeText, job.parsed, stories],
+  )
+  const stale = !!savedFit?.signature && !!currentSignature && savedFit.signature !== currentSignature
+
   async function analyze() {
     if (!job.parsed || analyzing) return
+    // Reuse the cached run when nothing that feeds it changed — the whole point of caching.
+    if (savedFit?.result && savedFit.signature && savedFit.signature === currentSignature) {
+      setFit(savedFit.result)
+      return
+    }
     setAnalyzing(true)
     setError(null)
     setFit(null)
     try {
-      const stories = await listStories()
-      const result = await analyzeResumeFit({ resumeText, job: job.parsed, stories })
+      const freshStories = await listStories()
+      setStories(freshStories)
+      const result = await analyzeResumeFit({ resumeText, job: job.parsed, stories: freshStories })
       setFit(result)
-      onFit(result)
+      onFit(result, fitInputSignature({ resumeText, job: job.parsed, stories: freshStories }))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not analyze fit — is the backend running and an LLM key set?')
     } finally {
@@ -75,6 +97,9 @@ export default function FitStep({ job, resumeText, savedFit, onFit }: Props) {
 
       {!job.parsed && <p className="text-xs text-amber-600">Parse this job in the Library → Jobs tab first.</p>}
       {noResume && <p className="text-xs text-amber-600">Add your resume in Library → Resume — fit is scored against it.</p>}
+      {stale && !analyzing && (
+        <p className="text-xs text-amber-600">Your resume, the JD, or your stories changed since this was scored — re-check fit to refresh.</p>
+      )}
       {analyzing && <Pending label="Scoring your resume against this job…" />}
       {error && <p className="text-sm text-red-600">{error}</p>}
 

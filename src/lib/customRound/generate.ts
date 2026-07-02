@@ -42,7 +42,9 @@ export async function generateCustomRoundPrep(
     system: CUSTOM_ROUND_CRITERIA.systemPrompt,
     user: roundContext(round, job),
     schema: CUSTOM_ROUND_CRITERIA.schema,
-    maxTokens: 2000,
+    // Authors a full prep brief (summary + items + prepActions) with adaptive thinking, which shares
+    // the max_tokens budget — needs headroom or it truncates and fails to parse.
+    maxTokens: 6000,
     thinking: 'adaptive',
     signal,
   })

@@ -41,6 +41,7 @@ import StageTracker, { type StageStatus } from './StageTracker'
 import StageConversation from './StageConversation'
 import SysDesignReport from './SysDesignReport'
 import MicButton from '../MicButton'
+import { enterStage, leaveStage, stageElapsedMs } from '../../lib/interview/stageTiming'
 
 // Excalidraw is heavy; load it (and its CSS) only when the candidate opens the whiteboard.
 const Whiteboard = lazy(() => import('./Whiteboard'))
@@ -94,7 +95,7 @@ function reducer(state: State, action: Action): State {
         phase: 'interview',
         problemId: action.problemId,
         config: action.config,
-        sessions: { [STAGES[0].id]: emptySession() },
+        sessions: { [STAGES[0].id]: enterStage(emptySession()) },
       }
     case 'CANDIDATE_TURN': {
       const s = state.sessions[action.stageId] || emptySession()
@@ -134,11 +135,23 @@ function reducer(state: State, action: Action): State {
         ...state,
         currentIndex: nextIndex,
         completed: { ...state.completed, [stage.id]: action.how },
-        sessions: { ...state.sessions, [next.id]: state.sessions[next.id] || emptySession() },
+        sessions: {
+          ...state.sessions,
+          [stage.id]: leaveStage(state.sessions[stage.id] || emptySession()),
+          [next.id]: enterStage(state.sessions[next.id] || emptySession()),
+        },
       }
     }
-    case 'REPORTING':
-      return { ...state, phase: 'reporting', error: null }
+    case 'REPORTING': {
+      // Bank the final stage's clock (the last stage never ADVANCEs).
+      const cur = STAGES[state.currentIndex]
+      return {
+        ...state,
+        phase: 'reporting',
+        error: null,
+        sessions: { ...state.sessions, [cur.id]: leaveStage(state.sessions[cur.id] || emptySession()) },
+      }
+    }
     case 'REPORT_DONE':
       return { ...state, phase: 'report', report: action.report, completedAt: Date.now() }
     case 'REPORT_ERROR':
@@ -434,7 +447,11 @@ export default function SystemDesignSession({ onNeedKeys }: { onNeedKeys?: () =>
         <DeliveryCard metrics={metrics} />
         <Recordings clips={state.voiceClips || []} />
         <Attachments ids={state.attachments || []} />
-        <SysDesignReport report={state.report} onRestart={handleReset} />
+        <SysDesignReport
+          report={state.report}
+          onRestart={handleReset}
+          timings={Object.fromEntries(STAGES.map((s) => [s.id, stageElapsedMs(state.sessions[s.id])]))}
+        />
       </div>
     )
   }

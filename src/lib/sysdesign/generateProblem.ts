@@ -46,7 +46,9 @@ export async function generateSysDesignProblem(spec: SysDesignProblemSpec, signa
     system: SYSDESIGN_GEN_PROBLEM_CRITERIA.systemPrompt,
     user,
     schema: SYSDESIGN_GEN_PROBLEM_CRITERIA.schema,
-    maxTokens: 2500,
+    // Adaptive thinking eats into max_tokens (it caps thinking + output), so give a generous ceiling
+    // well clear of any thinking spend or the authored problem's JSON truncates and fails to parse.
+    maxTokens: 12000,
     thinking: 'adaptive',
     signal,
   })

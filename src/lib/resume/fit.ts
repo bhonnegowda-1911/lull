@@ -7,6 +7,29 @@ import type { ParsedJob, ResumeFit } from '../../types'
 // the grader can mark a gap 'add_story' when a story already covers it — closing the loop to the
 // rest of the app. Prompt + schema are data (resumeCriteria.ts). One LLM call.
 
+// A stable fingerprint of the inputs that determine a fit result: the resume, the parsed JD, and the
+// story titles/themes the grader sees. Persisted alongside a cached run so the UI can reuse it when
+// nothing changed and flag it stale (re-check) when it did — mirrors prepInputSignature. djb2 keeps
+// the stored string tiny instead of hoarding the whole resume on the application row.
+export function fitInputSignature({
+  resumeText,
+  job,
+  stories = [],
+}: {
+  resumeText: string
+  job: ParsedJob
+  stories?: Story[]
+}): string {
+  const payload = JSON.stringify({
+    resume: resumeText.trim(),
+    job,
+    stories: stories.map((s) => ({ title: s.title, themes: s.themes })),
+  })
+  let h = 5381
+  for (let i = 0; i < payload.length; i++) h = ((h << 5) + h + payload.charCodeAt(i)) | 0
+  return (h >>> 0).toString(36)
+}
+
 export async function analyzeResumeFit({
   resumeText,
   job,
