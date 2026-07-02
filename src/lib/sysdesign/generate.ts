@@ -8,6 +8,16 @@ import type { JobDescription, ProblemPick } from '../../types'
 // on purpose: the highest-signal clues (untrusted code, flaky endpoints, 3am breaking-change alerts)
 // live in prose, not in the parsed fields. Picks referencing an unknown id are dropped defensively.
 
+// The catalog is identical for every job and every re-select, so it goes in `cachePrefix` (cached
+// after the first call within the window) while only the per-job parsed structure + raw JD sit in the
+// volatile `user` turn.
+function catalogPrefix(): string {
+  const catalog = problemCatalog()
+    .map((c) => `- ${c.id}: ${c.title} — ${c.statement}`)
+    .join('\n')
+  return `CATALOG OF CANONICAL PROBLEMS (pick problemId only from these ids):\n${catalog}`
+}
+
 function jobContext(job: JobDescription): string {
   const p = job.parsed
   const parsed = p
@@ -19,10 +29,7 @@ function jobContext(job: JobDescription): string {
         `Responsibilities: ${p.responsibilities.join(' | ')}`,
       ].join('\n')
     : `Title: ${job.title}\nCompany: ${job.company}`
-  const catalog = problemCatalog()
-    .map((c) => `- ${c.id}: ${c.title} — ${c.statement}`)
-    .join('\n')
-  return `CATALOG OF CANONICAL PROBLEMS (pick problemId only from these ids):\n${catalog}\n\nPARSED STRUCTURE:\n${parsed}\n\nRAW JOB DESCRIPTION:\n${job.rawText.trim()}`
+  return `PARSED STRUCTURE:\n${parsed}\n\nRAW JOB DESCRIPTION:\n${job.rawText.trim()}`
 }
 
 export async function selectInterviewProblems(
@@ -33,9 +40,12 @@ export async function selectInterviewProblems(
     provider: 'anthropic',
     model: SYSDESIGN_SELECT_CRITERIA.model,
     system: SYSDESIGN_SELECT_CRITERIA.systemPrompt,
+    cachePrefix: catalogPrefix(),
     user: jobContext(job),
     schema: SYSDESIGN_SELECT_CRITERIA.schema,
-    maxTokens: 1500,
+    // Adaptive thinking shares the max_tokens budget; widen so a long JD's reasoning can't starve the
+    // picks output into a truncated, unparseable response.
+    maxTokens: 3000,
     thinking: 'adaptive',
     signal,
   })

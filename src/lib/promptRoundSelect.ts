@@ -15,11 +15,15 @@ export interface PromptPick {
   rationale: string
 }
 
-function jobContext(
-  job: JobDescription,
-  catalog: { id: string; text: string; category: string }[],
-  interviewerContext?: string,
-): string {
+// The filtered question catalog is the same for every job asking this round, so it goes in
+// `cachePrefix` (cached after the first call within the window). Only the per-job parsed structure,
+// interviewer intel, and raw JD sit in the volatile `user` turn.
+function catalogPrefix(catalog: { id: string; text: string; category: string }[]): string {
+  const list = catalog.map((c) => `- ${c.id} [${c.category}]: ${c.text}`).join('\n')
+  return `CATALOG OF QUESTIONS (pick promptId only from these ids):\n${list}`
+}
+
+function jobContext(job: JobDescription, interviewerContext?: string): string {
   const p = job.parsed
   const parsed = p
     ? [
@@ -29,13 +33,12 @@ function jobContext(
         `Responsibilities: ${p.responsibilities.join(' | ')}`,
       ].join('\n')
     : `Title: ${job.title}\nCompany: ${job.company}`
-  const list = catalog.map((c) => `- ${c.id} [${c.category}]: ${c.text}`).join('\n')
   // The candidate's own intel about THIS interviewer/round (who they are, what they focus on) —
   // weight the ranking toward it. Often the sharpest signal of what will actually be asked.
   const intel = interviewerContext?.trim()
     ? `\n\nWHAT THE CANDIDATE KNOWS ABOUT THIS INTERVIEWER / ROUND (weight the ranking toward this — it's first-hand intel on what they'll actually focus on):\n${interviewerContext.trim()}`
     : ''
-  return `CATALOG OF QUESTIONS (pick promptId only from these ids):\n${list}\n\nPARSED STRUCTURE:\n${parsed}${intel}\n\nRAW JOB DESCRIPTION:\n${job.rawText.trim()}`
+  return `PARSED STRUCTURE:\n${parsed}${intel}\n\nRAW JOB DESCRIPTION:\n${job.rawText.trim()}`
 }
 
 export interface SelectOptions {
@@ -55,9 +58,12 @@ export async function selectPromptRound(
     provider: 'anthropic',
     model: criteria.model,
     system: criteria.systemPrompt,
-    user: jobContext(job, catalog, interviewerContext),
+    cachePrefix: catalogPrefix(catalog),
+    user: jobContext(job, interviewerContext),
     schema: criteria.schema,
-    maxTokens: 1800,
+    // Adaptive thinking shares the max_tokens budget; widen so reasoning can't starve the selection
+    // output into a truncated, unparseable response.
+    maxTokens: 3000,
     thinking: 'adaptive',
     signal,
   })
