@@ -102,7 +102,7 @@ describe('session persistence (resume + hydrate)', () => {
     report: null,
     error: null,
     attachments: ['asset-1'],
-    config: { targetLevel: 'staff', style: 'relaxed' },
+    config: { targetLevel: 'staff', style: 'relaxed', mode: 'coaching' },
   }
 
   it('round-trips an in-progress interview (id/attachments/config preserved)', () => {
@@ -113,12 +113,16 @@ describe('session persistence (resume + hydrate)', () => {
     expect(revived?.sessions[STAGES[0].id].transcript).toHaveLength(1)
     expect(revived?.completed[STAGES[0].id]).toBe('done')
     expect(revived?.attachments).toEqual(['asset-1'])
-    expect(revived?.config).toEqual({ targetLevel: 'staff', style: 'relaxed' })
+    expect(revived?.config).toEqual({ targetLevel: 'staff', style: 'relaxed', mode: 'coaching' })
   })
 
   it('defaults config when an older session has none', () => {
     const { config: _omit, ...noConfig } = base
-    expect(reviveSession(JSON.stringify(noConfig))?.config).toEqual({ targetLevel: 'senior', style: 'balanced' })
+    expect(reviveSession(JSON.stringify(noConfig))?.config).toEqual({
+      targetLevel: 'senior',
+      style: 'balanced',
+      mode: 'interview',
+    })
   })
 
   it('drops in-flight LLM state so the user lands on something actionable', () => {

@@ -407,7 +407,7 @@ export default function SystemDesignSession({ onNeedKeys }: { onNeedKeys?: () =>
     return (
       <ProblemPicker
         onStart={(id) => dispatch({ type: 'START', problemId: id, config: setupConfig })}
-        setup={<InterviewSetup value={setupConfig} onChange={setSetupConfig} />}
+        setup={<InterviewSetup value={setupConfig} onChange={setSetupConfig} showMode />}
         problems={pickerProblems}
         onDelete={handleDeleteProblem}
         generator={
@@ -464,7 +464,17 @@ export default function SystemDesignSession({ onNeedKeys }: { onNeedKeys?: () =>
         <div className="rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-4 shadow-sm">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="text-xs uppercase tracking-wide text-stone-400">Problem</div>
+              <div className="flex items-center gap-2">
+                <div className="text-xs uppercase tracking-wide text-stone-400">Problem</div>
+                {state.config.mode === 'coaching' && (
+                  <span
+                    className="rounded-full bg-terracotta-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-terracotta-700"
+                    title="Coaching mode: the interviewer teaches — it reveals strong answers, gives hints, and explains tradeoffs."
+                  >
+                    🎓 Coaching
+                  </span>
+                )}
+              </div>
               <div className="text-sm font-semibold text-stone-900">{problem.title}</div>
             </div>
             <div className="flex shrink-0 flex-col items-end gap-1">

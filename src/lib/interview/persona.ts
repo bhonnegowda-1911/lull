@@ -11,18 +11,24 @@
 
 export type TargetLevel = 'mid' | 'senior' | 'staff'
 export type InterviewerStyle = 'rigorous' | 'balanced' | 'relaxed'
+// A third, orthogonal dial: whether the session TESTS the candidate (a realistic interview) or
+// TEACHES them (coaching). Interview mode hides the reference points and probes adversarially;
+// coaching mode reveals what a strong answer covers, gives hints, and explains the tradeoffs.
+export type InterviewMode = 'interview' | 'coaching'
 
 export interface InterviewConfig {
   targetLevel: TargetLevel
   style: InterviewerStyle
+  mode: InterviewMode
 }
 
 // Mid/senior/staff mirror the per-stage `levelRubric` the report grades against; 'senior' is the
 // realistic default and 'balanced' matches how most real interviews actually feel.
 export const TARGET_LEVELS: TargetLevel[] = ['mid', 'senior', 'staff']
 export const INTERVIEWER_STYLES: InterviewerStyle[] = ['rigorous', 'balanced', 'relaxed']
+export const INTERVIEW_MODES: InterviewMode[] = ['interview', 'coaching']
 
-export const DEFAULT_INTERVIEW_CONFIG: InterviewConfig = { targetLevel: 'senior', style: 'balanced' }
+export const DEFAULT_INTERVIEW_CONFIG: InterviewConfig = { targetLevel: 'senior', style: 'balanced', mode: 'interview' }
 
 // The bar the candidate is held to — shapes how hard the interviewer probes and what counts as
 // "good enough" to move on.
@@ -46,12 +52,22 @@ export const STYLE_GUIDANCE: Record<InterviewerStyle, string> = {
 }
 
 // Relaxed interviewers don't pile on curveballs; the escalation block is suppressed for them.
-export function escalationEnabled(style: InterviewerStyle): boolean {
-  return style !== 'relaxed'
+// Coaching sessions never escalate — they teach rather than test.
+export function escalationEnabled(style: InterviewerStyle, mode: InterviewMode = 'interview'): boolean {
+  return mode !== 'coaching' && style !== 'relaxed'
+}
+
+export function isCoaching(config: InterviewConfig): boolean {
+  return config.mode === 'coaching'
 }
 
 /** The interviewer-config block injected into a turn system prompt. Shared by coding + sysdesign. */
-export function personaDirective({ targetLevel, style }: InterviewConfig): string {
+export function personaDirective({ targetLevel, style, mode }: InterviewConfig): string {
+  // Coaching drops the adversarial STYLE dial (sharpness would fight the teaching tone); the target
+  // level becomes the bar the coach is training the candidate TOWARD, not a hidden gate.
+  if (mode === 'coaching') {
+    return `TARGET LEVEL: You are coaching them toward ${LEVEL_BAR[targetLevel] ?? LEVEL_BAR.senior}`
+  }
   return `INTERVIEWER STYLE: ${STYLE_GUIDANCE[style] ?? STYLE_GUIDANCE.balanced}
 
 TARGET LEVEL: Hold the candidate to ${LEVEL_BAR[targetLevel] ?? LEVEL_BAR.senior}`
@@ -77,6 +93,16 @@ export const STYLE_BLURB: Record<InterviewerStyle, string> = {
   relaxed: 'Friendly and easy to satisfy — gives you room.',
 }
 
+export const MODE_LABEL: Record<InterviewMode, string> = {
+  interview: 'Interview',
+  coaching: 'Coaching',
+}
+
+export const MODE_BLURB: Record<InterviewMode, string> = {
+  interview: 'A realistic round — you drive, it probes and grades.',
+  coaching: 'A coach that teaches — reveals strong answers, hints, and explains tradeoffs.',
+}
+
 // --- sanitize (config arrives from persisted/loaded state) ---
 
 export function isTargetLevel(v: unknown): v is TargetLevel {
@@ -87,11 +113,16 @@ export function isInterviewerStyle(v: unknown): v is InterviewerStyle {
   return typeof v === 'string' && (INTERVIEWER_STYLES as string[]).includes(v)
 }
 
+export function isInterviewMode(v: unknown): v is InterviewMode {
+  return typeof v === 'string' && (INTERVIEW_MODES as string[]).includes(v)
+}
+
 /** Coerce arbitrary loaded input into a valid config, falling back to the defaults per field. */
 export function sanitizeConfig(input: unknown): InterviewConfig {
   const c = (input ?? {}) as Partial<InterviewConfig>
   return {
     targetLevel: isTargetLevel(c.targetLevel) ? c.targetLevel : DEFAULT_INTERVIEW_CONFIG.targetLevel,
     style: isInterviewerStyle(c.style) ? c.style : DEFAULT_INTERVIEW_CONFIG.style,
+    mode: isInterviewMode(c.mode) ? c.mode : DEFAULT_INTERVIEW_CONFIG.mode,
   }
 }

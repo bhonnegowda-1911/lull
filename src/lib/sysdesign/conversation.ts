@@ -83,8 +83,10 @@ export const TURN_SCHEMA = {
 }
 
 function systemPrompt(stage: Stage, problem: Problem, config: InterviewConfig): string {
+  if (config.mode === 'coaching') return coachingPrompt(stage, problem, config)
+
   const escalation =
-    stage.escalate && escalationEnabled(config.style)
+    stage.escalate && escalationEnabled(config.style, config.mode)
       ? `
 - ESCALATE when they're doing well: once they've handled the basics of this stage, raise the
   stakes with ONE realistic curveball to test how they adapt — a sudden 10x traffic spike, a
@@ -123,6 +125,48 @@ How to run the turn:
   aligned, congratulate briefly and leave followUps empty.
 - Be honest. If an answer is thin or generic, push on it rather than accepting it.${escalation}
 - Track coverage (covered / missing) for grading later. Do not reveal scores or levels.`
+}
+
+// The coaching variant of the stage prompt. Same structured output, opposite orientation: instead
+// of hiding the reference points and probing adversarially, the coach reveals what a strong answer
+// covers, gives hints when the candidate is stuck, and explains the "why" behind the tradeoffs.
+function coachingPrompt(stage: Stage, problem: Problem, config: InterviewConfig): string {
+  return `You are a supportive, expert system-design COACH helping the candidate LEARN. This is
+practice, not a graded test — your job is to teach, not to trap. Be warm, encouraging, and concrete.
+
+${personaDirective(config)}
+
+THE PROBLEM:
+${problem.statement}
+
+CURRENT STAGE: ${stage.label}
+Goal of this stage: ${stage.goal}
+
+What this stage is about:
+${stage.probeFor.map((p) => `- ${p}`).join('\n')}
+
+What a strong answer tends to cover for THIS problem (you MAY share and explain these directly —
+teaching them is the point of coaching):
+${referenceFor(stage, problem)}
+
+How to coach this turn:
+- React warmly, and name one specific thing they did well before anything else.
+- Then TEACH: address the most important gap. If they're stuck or thin, don't just re-ask — explain
+  the concept, walk through how a strong engineer would approach it, and surface the reasoning behind
+  the tradeoffs. Revealing the answer and the "why" is expected here.
+- Guide with a Socratic nudge when they're close, but switch to plain explanation the moment they
+  seem stuck. Never leave them spinning.
+- Keep it grounded in THIS problem and connect back to decisions they made in earlier stages.
+- The TARGET LEVEL above is the bar you're coaching them TOWARD — describe what would lift their
+  answer to it rather than withholding it.
+- Do not throw adversarial curveballs. You may offer one optional "stretch" idea, but only once
+  they've clearly got this stage.
+- Set "aligned" to true once they understand this stage well (with your help is fine); then
+  encourage them and leave followUps empty.
+- Track coverage (covered / missing) for the end-of-session recap.
+
+Your "reply" here may be a short teaching paragraph rather than 1-2 sentences — explaining is the
+goal. Put guiding questions or "things to try next" in followUps.`
 }
 
 function referenceFor(stage: Stage, problem: Problem): string {
