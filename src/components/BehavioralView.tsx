@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { useApiKeys } from '../context/ApiKeyContext'
-import { PROMPTS, DEFAULT_PROMPT } from '../data/prompts'
+import { PROMPTS, DEFAULT_PROMPT, type Prompt } from '../data/prompts'
 import { transcribe } from '../lib/transcribe'
 import { runPipeline } from '../lib/pipeline'
 import { buildFeedback } from '../lib/feedback'
@@ -170,6 +170,9 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
   const [state, dispatch] = useReducer(reducer, initialState)
   const [recordMode, setRecordMode] = useState<RecordMode>('audio')
   const [promptId, setPromptId] = useState(DEFAULT_PROMPT.id)
+  // An ad-hoc question launched from a prep-plan task for a round with no bank prompt (custom rounds
+  // practice their own authored question). Takes precedence over the selected bank prompt until cleared.
+  const [customPrompt, setCustomPrompt] = useState<Prompt | null>(null)
   const [mode, setMode] = useState<BehavioralMode>('interview')
   const [profile, setProfile] = useState<Profile>(DEFAULT_PROFILE)
   // The target job this practice was launched for (from a round's plan), or null for open practice.
@@ -221,27 +224,53 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
   // Pre-select a question chosen from a target job's plan (Prep → Match → Practice), ready to record.
   // The plan also passes the job id so grading can rate fit to that company/JD bar.
   const navState = location.state as
-    | { startPromptId?: string; jobId?: string; persona?: InterviewerPersona; interviewerContext?: string }
+    | {
+        startPromptId?: string
+        jobId?: string
+        persona?: InterviewerPersona
+        interviewerContext?: string
+        startPrompt?: { text: string; label: string; assesses?: string; tip?: string; trap?: string }
+      }
     | null
   const startPromptId = navState?.startPromptId
   const startJobId = navState?.jobId
   const startPersona = navState?.persona
   const startInterviewerContext = navState?.interviewerContext
+  const startPrompt = navState?.startPrompt
+  const startPromptKey = startPrompt?.text
   useEffect(() => {
-    if (!startPromptId) return
-    setPromptId(startPromptId)
+    // A prep-plan task for a custom/no-bank round arrives with persona + interviewer context and often
+    // an ad-hoc question (its own authored prompt) but no bank prompt id — apply all of it so the mock
+    // is grounded in the real round rather than a random bank question.
+    if (!startPromptId && !startPersona && !startInterviewerContext && !startJobId && !startPrompt) return
+    if (startPrompt) {
+      setCustomPrompt({
+        id: 'custom-round',
+        category: startPrompt.label,
+        label: startPrompt.label,
+        text: startPrompt.text,
+        assesses: startPrompt.assesses ?? '',
+        tip: startPrompt.tip ?? '',
+        trap: startPrompt.trap ?? '',
+        avoid: '',
+      })
+    } else if (startPromptId) {
+      setCustomPrompt(null)
+      setPromptId(startPromptId)
+    }
     dispatch({ type: 'RESET' })
-    setPersona(startPersona ?? 'hiring_manager')
-    setInterviewerContext(startInterviewerContext ?? '')
+    if (startPersona) setPersona(startPersona)
+    if (startInterviewerContext) setInterviewerContext(startInterviewerContext)
     if (startJobId) void getJob(startJobId).then((j) => setTargetJob(j?.parsed ?? null))
     window.history.replaceState({}, '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startPromptId, startJobId, startPersona, startInterviewerContext])
+  }, [startPromptId, startJobId, startPersona, startInterviewerContext, startPromptKey])
 
-  const prompt = PROMPTS.find((p) => p.id === promptId) || DEFAULT_PROMPT
+  const prompt = customPrompt ?? (PROMPTS.find((p) => p.id === promptId) || DEFAULT_PROMPT)
   const busy = state.phase === 'transcribing' || state.phase === 'followups_generating' || state.phase === 'grading'
 
   function handleSelectPrompt(id: string) {
+    setCustomPrompt(null)
     setPromptId(id)
     if (state.phase !== 'idle') dispatch({ type: 'RESET' })
   }

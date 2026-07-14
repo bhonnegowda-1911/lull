@@ -35,9 +35,11 @@ TAILOR the plan to the situation — this is the whole point:
   daily load — aim ~60-120 minutes of work per day, allow light/rest days, and never blow past ~150.
 
 Every task is ONE of:
-- A SAVED question: set "ref" to its CODE (or the mock code) and "interview" to its number. Do NOT
-  invent new practice questions — only reference the provided codes for actual practice/mocks. You may
-  restate the code's title in "text", but the app uses the canonical title regardless.
+- A SAVED question: set "ref" to its CODE (e.g. Q1) — just the bare code, nothing appended — and
+  "interview" to its number. ANY task that is solving, practicing, rehearsing, or mocking a specific
+  saved question MUST use its code; never write such a task with ref null. Do NOT invent new practice
+  questions — only reference the provided codes for actual practice/mocks. You may restate the code's
+  title in "text", but the app uses the canonical title regardless.
 - A TAILORED prep task you author: set "ref" to null. Make it concrete and specific to who they're
   meeting and the company/role/stage — e.g. "Form a sharp POV on <company>'s core architecture bet; the
   CTO will pressure-test your judgment", "Prepare one 0-to-1 ownership story with metrics", "Read the

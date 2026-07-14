@@ -387,10 +387,70 @@ describe('generateGlobalPrepPlan', () => {
 
     // Coded task: canonical title + deep-link win over the model's text; LLM's minutes are kept.
     expect(day1[0]).toMatchObject({ text: 'Solve: Coding c1', minutes: 40, company: 'Acme', link: { to: '/practice/coding', state: { startProblemId: 'c1' } } })
-    // Tailored task: kept as authored, attributed, and linked to the application.
-    expect(day1[1]).toMatchObject({ text: 'Form a POV on Acme’s architecture for the CTO', minutes: 30, company: 'Acme', link: { to: '/app/a' } })
+    // Tailored task: kept as authored, attributed, and linked to the round's practice page (not the app).
+    expect(day1[1]).toMatchObject({ text: 'Form a POV on Acme’s architecture for the CTO', minutes: 30, company: 'Acme', link: { to: '/practice/coding' } })
     // The mock code resolves to the canonical mock task.
     expect(plan.days[1].tasks[0]).toMatchObject({ text: 'Full timed mock: Technical screen', minutes: 45 })
+  })
+
+  it('tolerates a code with trailing text, and routes no-practice-page rounds to a context-grounded mock', async () => {
+    const today = toISODate()
+    // A custom founder chat: no practice mode, but has interviewer context to ground a mock.
+    const custom = jobWith({ id: 'a', company: 'Verkada', type: 'custom', scheduledAt: addDays(today, 2), topic: 'Founder chat', focusAreas: ['ownership'] })
+    custom.application!.rounds[0].notes = 'CTO, Series A'
+    const onsite = jobWith({ id: 'b', company: 'Acme', type: 'onsite_loop', scheduledAt: addDays(today, 2) })
+
+    mockChat.mockResolvedValue({
+      parsed: {
+        days: [
+          {
+            dayIndex: 1,
+            tasks: [
+              // Custom round tailored task → behavioral mock grounded in the round context (not the app).
+              { interview: 1, ref: null, text: 'Prepare a POV for the CTO', minutes: 30 },
+              // Model appended the mock title after the code — still resolves to the onsite mock.
+              { interview: 2, ref: 'M2 (onsite mock)', text: 'mock', minutes: 90 },
+              // Onsite has no context here → still a behavioral mock, just no interviewerContext.
+              { interview: 2, ref: null, text: 'Prep for the panel', minutes: 20 },
+            ],
+          },
+        ],
+      },
+    } as never)
+
+    const tasks = (await generateGlobalPrepPlan([custom, onsite])).days.flatMap((d) => d.tasks)
+    expect(tasks.find((t) => t.text.startsWith('Full timed mock'))).toBeTruthy()
+    // Custom round tailored task → grounded behavioral mock (context + a neutral opener), not the app.
+    const cto = tasks.find((t) => t.text === 'Prepare a POV for the CTO')
+    expect(cto?.link?.to).toBe('/practice/behavioral')
+    expect(cto?.link?.state).toMatchObject({ jobId: 'a', persona: 'hiring_manager', interviewerContext: 'Founder chat — CTO, Series A — Focus: ownership' })
+    expect(cto?.link?.state?.startPrompt?.text).toBeTruthy()
+    // Onsite (no context) → still a behavioral mock, never the application.
+    expect(tasks.find((t) => t.text === 'Prep for the panel')?.link).toMatchObject({ to: '/practice/behavioral', state: { jobId: 'b', persona: 'hiring_manager' } })
+  })
+
+  it('practices a custom round’s OWN authored questions via a context-grounded mock (not a bank question)', async () => {
+    const today = toISODate()
+    const custom = jobWith({ id: 'a', company: 'Verkada', type: 'custom', scheduledAt: addDays(today, 3), topic: 'Founder chat' })
+    custom.application!.rounds[0].notes = 'CTO, Series A'
+    custom.application!.rounds[0].customPrep = {
+      generatedAt: '2026-07-14',
+      summary: 's',
+      prepActions: [],
+      items: [{ prompt: 'How would you approach 0→1 here?', assesses: 'judgment', approach: 'a', trap: 't' }],
+    }
+    // The authored question becomes code Q1; the model references it.
+    mockChat.mockResolvedValue({ parsed: { days: [{ dayIndex: 1, tasks: [{ interview: 1, ref: 'Q1', text: 'x', minutes: 25 }] }] } } as never)
+
+    const q = (await generateGlobalPrepPlan([custom])).days.flatMap((d) => d.tasks).find((t) => t.text.startsWith('Rehearse: How would you'))
+    expect(q?.link?.to).toBe('/practice/behavioral')
+    // Opens the exact authored question, grounded in the round context — not a canned bank prompt.
+    expect(q?.link?.state).toMatchObject({
+      jobId: 'a',
+      persona: 'hiring_manager',
+      interviewerContext: 'Founder chat — CTO, Series A',
+      startPrompt: { text: 'How would you approach 0→1 here?' },
+    })
   })
 
   it('returns an empty plan when nothing is scheduled', async () => {

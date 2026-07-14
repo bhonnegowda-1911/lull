@@ -407,6 +407,11 @@ export interface PrepTaskLink {
     startPromptId?: string
     jobId?: string
     persona?: 'recruiter' | 'hiring_manager'
+    /** Free-text interviewer/round context to ground a conversational mock (custom/no-bank rounds). */
+    interviewerContext?: string
+    /** An ad-hoc question to practice — used when the round has no bank prompt (custom rounds practice
+     *  their own authored questions instead of a canned one). */
+    startPrompt?: { text: string; label: string; assesses?: string; tip?: string; trap?: string }
   }
 }
 

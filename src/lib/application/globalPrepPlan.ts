@@ -69,11 +69,52 @@ const PRACTICE_ROUTE: Record<NonNullable<PracticeMode>, string> = {
   build: '/practice/build',
 }
 
-/** The exact saved questions to practice for a round, resolved from the job's picks via the round's
- *  catalog pick-source — each deep-linked to its practice page — plus a closing timed mock. Project/
- *  custom/take-home rounds have no curated picks; they fall back to the round's topic/focus. */
-function roundPractice(job: JobDescription, type: RoundType): { items: Practice[]; mock: Practice | null } {
+/** The round's practice-mode page (no specific start item), with job context so a behavioral round
+ *  opens with the right persona. Undefined for rounds with no single practice mode (onsite/custom). */
+function practiceModeLink(jobId: string, type: RoundType): PrepTaskLink | undefined {
+  const mode = roundCatalog(type).practiceMode
+  if (!mode) return undefined
+  return { to: PRACTICE_ROUTE[mode], state: mode === 'behavioral' ? { jobId, persona: type === 'recruiter' ? 'recruiter' : 'hiring_manager' } : undefined }
+}
+
+/** The round's context as a single free-text string, to ground a conversational mock. */
+function roundInterviewerContext(round: InterviewRoundInstance): string {
+  const focus = (round.focusAreas ?? []).filter((a) => a.trim())
+  return [round.topic?.trim(), round.notes?.trim(), focus.length ? `Focus: ${focus.join(', ')}` : '']
+    .filter(Boolean)
+    .join(' — ')
+}
+
+/** A context-grounded conversational mock for a round with no bank prompt: opens the behavioral page
+ *  seeded with the round's interviewer context and an ad-hoc question (its own authored prompt, or a
+ *  neutral opener) — so it never lands on a random bank STAR question. */
+function behavioralMockLink(jobId: string, round: InterviewRoundInstance, startPrompt: NonNullable<PrepTaskLink['state']>['startPrompt']): PrepTaskLink {
+  const interviewerContext = roundInterviewerContext(round)
+  return {
+    to: '/practice/behavioral',
+    state: { jobId, persona: 'hiring_manager', ...(interviewerContext ? { interviewerContext } : {}), ...(startPrompt ? { startPrompt } : {}) },
+  }
+}
+
+/** Where an attributed task with no specific saved-question lands. Rounds with a practice mode go to it;
+ *  rounds with none (custom / onsite / founder chats) still get to PRACTICE — a context-grounded
+ *  behavioral mock with a neutral opener — rather than dumping to the application. */
+function fallbackLink(jobId: string, round: InterviewRoundInstance): PrepTaskLink {
+  const mode = practiceModeLink(jobId, round.type)
+  if (mode) return mode
+  return behavioralMockLink(jobId, round, {
+    text: 'Tell me about your background and why this role — the interviewer will take it from there.',
+    label: `${round.label || roundLabel(round.type)} — open`,
+  })
+}
+
+/** The exact saved questions to practice for a round: the job's picks via the round's catalog
+ *  pick-source (each deep-linked to its practice page), or — for a custom/no-bank round that has an
+ *  authored brief — that brief's own questions (each opening a context-grounded behavioral mock). Plus
+ *  a closing timed mock. A round with neither falls back to the round's topic/focus at schedule time. */
+function roundPractice(job: JobDescription, round: InterviewRoundInstance): { items: Practice[]; mock: Practice | null } {
   const jobId = job.id
+  const type = round.type
   const behavioral = (promptId: string, persona: 'recruiter' | 'hiring_manager'): PrepTaskLink => ({
     to: '/practice/behavioral',
     state: { startPromptId: promptId, jobId, persona },
@@ -104,21 +145,31 @@ function roundPractice(job: JobDescription, type: RoundType): { items: Practice[
       break
   }
 
-  // The mock deep-links to the round's practice mode (no specific start item), carrying job context so
-  // a behavioral mock opens with the right persona. Rounds with no single practice mode (onsite/custom)
-  // get no link.
-  const mode = roundCatalog(type).practiceMode
-  const mockLink: PrepTaskLink | undefined = mode
-    ? { to: PRACTICE_ROUTE[mode], state: mode === 'behavioral' ? { jobId, persona: type === 'recruiter' ? 'recruiter' : 'hiring_manager' } : undefined }
-    : undefined
+  // No catalog picks but an authored brief (custom / take-home round): its own questions ARE the saved
+  // items — each opens a behavioral mock grounded in the round context, on that exact question.
+  if (items.length === 0 && round.customPrep?.items.length) {
+    items = round.customPrep.items.map((it) => ({
+      text: `Rehearse: ${it.prompt}`,
+      minutes: REHEARSE_MIN.behavioral,
+      link: behavioralMockLink(jobId, round, {
+        text: it.prompt,
+        label: `${round.label || roundLabel(type)} question`,
+        assesses: it.assesses,
+        tip: it.approach,
+        trap: it.trap,
+      }),
+    }))
+  }
+
+  // The mock deep-links to the round's practice mode; rounds with no single practice mode get no link.
   const mockMin = MOCK_MIN[type]
-  const mock = mockMin != null ? { text: `Full timed mock: ${roundLabel(type)}`, minutes: mockMin, link: mockLink } : null
+  const mock = mockMin != null ? { text: `Full timed mock: ${roundLabel(type)}`, minutes: mockMin, link: practiceModeLink(jobId, type) } : null
   return { items, mock }
 }
 
-/** Just the practice titles — the stable slice of a round's picks the signature fingerprints. */
-function roundItems(job: JobDescription, type: RoundType): string[] {
-  return roundPractice(job, type).items.map((p) => p.text)
+/** Just the practice titles — the stable slice of a round's questions the signature fingerprints. */
+function roundItems(job: JobDescription, round: InterviewRoundInstance): string[] {
+  return roundPractice(job, round).items.map((p) => p.text)
 }
 
 /**
@@ -167,7 +218,7 @@ export function prepInputSignature(jobs: JobDescription[], today = toISODate(), 
       topic: i.round.topic ?? '',
       focusAreas: (i.round.focusAreas ?? []).filter((a) => a.trim()),
       notes: (i.round.notes ?? '').trim(),
-      items: job ? roundItems(job, i.round.type) : [],
+      items: job ? roundItems(job, i.round) : [],
     }
   })
   return JSON.stringify(norm)
@@ -239,7 +290,9 @@ type RawDay = { dayIndex: number; tasks: RawTask[] }
 function mapRawTask(t: RawTask, registry: Map<string, { practice: Practice; iv: IvDay }>, withDay: IvDay[]): GlobalPrepTask | null {
   const minutes = typeof t.minutes === 'number' && t.minutes > 0 ? t.minutes : undefined
 
-  const reg = t.ref ? registry.get(t.ref.trim()) : undefined
+  // Match the leading code token (Q3, M1), tolerating a model that appends the title after it.
+  const code = t.ref?.trim().match(/^[qm]\d+/i)?.[0].toUpperCase()
+  const reg = code ? registry.get(code) : undefined
   if (reg) {
     const { practice, iv } = reg
     return {
@@ -265,7 +318,8 @@ function mapRawTask(t: RawTask, registry: Map<string, { practice: Practice; iv: 
     task.company = iv.company
     task.role = iv.role
     task.roundLabel = iv.round.label || roundLabel(iv.round.type)
-    task.link = { to: `/app/${iv.jobId}` }
+    // Land on the round's practice page (not the application) so a prep task still opens where it's worked.
+    task.link = fallbackLink(iv.jobId, iv.round)
   }
   return task
 }
@@ -277,7 +331,7 @@ async function planWithLLM(withDay: IvDay[], findJob: (id: string) => JobDescrip
 
   const lines = withDay.map((iv, idx) => {
     const job = findJob(iv.jobId)
-    const { items, mock } = job ? roundPractice(job, iv.round.type) : { items: [], mock: null }
+    const { items, mock } = job ? roundPractice(job, iv.round) : { items: [], mock: null }
     const roundLbl = iv.round.label || roundLabel(iv.round.type)
     const codeLines: string[] = []
     for (const it of items) {
@@ -358,14 +412,14 @@ function buildDeterministicDays(withDay: IvDay[], findJob: (id: string) => JobDe
     })
 
     const job = findJob(iv.jobId)
-    const { items, mock } = job ? roundPractice(job, iv.round.type) : { items: [], mock: null }
+    const { items, mock } = job ? roundPractice(job, iv.round) : { items: [], mock: null }
     const end = Math.min(iv.day, span)
     const contentEnd = mock && end > 1 ? end - 1 : end
 
     if (items.length === 0) {
       const focus = (iv.round.focusAreas ?? []).filter((a) => a.trim())
       const about = iv.round.topic?.trim() || focus.join(', ') || 'key topics + your stories'
-      put(contentEnd, attribute({ text: `Review ${roundLbl}: ${about}`, minutes: 30, link: { to: `/app/${iv.jobId}` } }))
+      put(contentEnd, attribute({ text: `Review ${roundLbl}: ${about}`, minutes: 30, link: fallbackLink(iv.jobId, iv.round) }))
     } else {
       items.forEach((p, k) => put(1 + Math.floor((k * contentEnd) / items.length), attribute(p)))
     }
