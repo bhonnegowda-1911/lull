@@ -115,7 +115,7 @@ export default function PrepPlanPanel({ jobs, onPlanChange }: Props) {
           <h3 className="flex items-center gap-1.5 text-sm font-semibold text-stone-900">
             <ListChecks size={15} className="text-terracotta-500" aria-hidden /> Prep plan
           </h3>
-          <p className="text-xs text-stone-500">Your saved practice questions from every active interview, laid out day by day up to each date.</p>
+          <p className="text-xs text-stone-500">One schedule tailored to each interview — the company, round, and who you’re meeting — around your saved questions.</p>
         </div>
         {!empty && (
           <button
@@ -130,7 +130,7 @@ export default function PrepPlanPanel({ jobs, onPlanChange }: Props) {
         )}
       </div>
 
-      {building && <Pending label="Laying out your saved questions across every interview…" />}
+      {building && <Pending label="Tailoring a plan to each interview and who you’re meeting…" />}
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       {stale && !building && (
         <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">

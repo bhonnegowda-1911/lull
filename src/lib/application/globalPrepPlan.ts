@@ -1,3 +1,5 @@
+import { chatStructured } from '../llmClient'
+import { PREP_PLAN_CRITERIA } from '../../data/prepPlanCriteria'
 import { getProblem as getCodingProblem } from '../../data/coding/problems'
 import { getProblem } from '../../data/sysdesign/problems'
 import { getPrompt } from '../../data/prompts'
@@ -15,13 +17,15 @@ import type {
 } from '../../types'
 
 // One cross-application prep plan, built from ALL active interviews at once. Each in-flight company
-// contributes its active (current-stage) scheduled round, and every round already carries the exact
-// questions to practice (the JD-selector picks saved on the job). This lays those SAME saved items out
-// deterministically day-by-day across the parallel loops — front-loading each interview's reps in its
-// run-up and closing with a timed mock — instead of re-inventing tasks with an LLM. Every task is
-// attributed back to the interview it serves. Regeneration is driven by `prepInputSignature`: when the
-// active interviews or their picks change, the stored plan's signature no longer matches and the UI
-// offers a rebuild.
+// contributes its active (current-stage) scheduled round, and every round carries the exact questions
+// to practice (the JD-selector picks saved on the job). An LLM lays out ONE tailored day-by-day
+// schedule across the parallel loops: it reads each interview's company/role/round, how soon it is, and
+// the interviewer intel (round notes), then references the SAVED questions by code — so the plan can
+// deep-link them and keep titles exact — and adds context-specific prep grounded in who the candidate
+// is meeting. If the LLM call fails, a deterministic scheduler lays the same saved picks out as a
+// fallback so there's always a plan. Regeneration is driven by `prepInputSignature`: when the active
+// interviews, their picks, or the interviewer notes change, the stored plan's signature no longer
+// matches and the UI offers a rebuild.
 
 const MAX_DAYS = 21
 
@@ -162,6 +166,7 @@ export function prepInputSignature(jobs: JobDescription[], today = toISODate(), 
       outcome: i.round.outcome,
       topic: i.round.topic ?? '',
       focusAreas: (i.round.focusAreas ?? []).filter((a) => a.trim()),
+      notes: (i.round.notes ?? '').trim(),
       items: job ? roundItems(job, i.round.type) : [],
     }
   })
@@ -181,31 +186,155 @@ function dayFocus(tasks: GlobalPrepTask[]): string {
   return companies.join(' + ') || 'Review'
 }
 
+/** An active interview plus its calendar day (today = 1). */
+type IvDay = ActiveInterview & { day: number }
+
+/** Collapse a dayIndex→tasks map into ordered, non-empty GlobalPrepDays. */
+function daysFromBuckets(buckets: Map<number, GlobalPrepTask[]>, today: string, span: number): GlobalPrepDay[] {
+  const days: GlobalPrepDay[] = []
+  for (let d = 1; d <= span; d++) {
+    const tasks = buckets.get(d)
+    if (tasks?.length) days.push({ date: addDays(today, d - 1), focus: dayFocus(tasks), tasks })
+  }
+  return days
+}
+
 /**
- * Build the single cross-application prep plan by laying each active interview's SAVED practice picks
- * across its run-up. dayIndex 1 = today, counting forward to the furthest interview within the window
- * (capped at MAX_DAYS). Each interview's items are spread over the days before it (front-loaded), with a
- * timed mock reserved for the interview day itself; a round with no saved picks gets one grounding
- * review task. Fully deterministic — no LLM call. Returns an empty plan when nothing is scheduled.
- *
- * Kept `async` so callers can `await` it uniformly (and to leave room for future async grounding).
+ * The single cross-application prep plan. Reads every active interview's context — company, role,
+ * round, how soon it is, the interviewer intel, and the SAVED questions to practice — and has an LLM
+ * lay out ONE tailored day-by-day schedule. The model references saved questions by code (so we attach
+ * the exact title + deep-link) and authors context-specific prep for who the candidate is meeting. On
+ * any failure it falls back to the deterministic scheduler, so there's always a plan. Empty when nothing
+ * is scheduled.
  */
 export async function generateGlobalPrepPlan(jobs: JobDescription[]): Promise<GlobalPrepPlan> {
   const today = toISODate()
   const interviews = activeInterviews(jobs, today)
   const signature = prepInputSignature(jobs, today)
+  const generatedAt = new Date().toISOString()
 
-  if (interviews.length === 0) {
-    return { generatedAt: new Date().toISOString(), signature, days: [] }
-  }
+  if (interviews.length === 0) return { generatedAt, signature, days: [] }
 
   const findJob = byId(jobs)
   // Each interview's calendar day (today = day 1) and the plan window: out to the furthest interview,
   // clamped to MAX_DAYS so the run-up stays actionable.
-  const withDay = interviews.map((i) => ({ ...i, day: daysBetween(today, i.round.scheduledAt!) + 1 }))
+  const withDay: IvDay[] = interviews.map((i) => ({ ...i, day: daysBetween(today, i.round.scheduledAt!) + 1 }))
   const span = Math.min(Math.max(...withDay.map((i) => i.day), 1), MAX_DAYS)
 
-  // dayIndex (1..span) → its tasks, filled interview by interview.
+  try {
+    const days = await planWithLLM(withDay, findJob, today, span)
+    if (days.length) return { generatedAt, signature, days }
+  } catch {
+    // Backend down / no key / bad parse — fall through to the deterministic plan below.
+  }
+  return { generatedAt, signature, days: buildDeterministicDays(withDay, findJob, today, span) }
+}
+
+type RawTask = { interview: number | null; ref: string | null; text: string; minutes: number }
+type RawDay = { dayIndex: number; tasks: RawTask[] }
+
+/** Resolve one LLM task into an attributed GlobalPrepTask. A `ref` that matches a saved-question code
+ *  becomes that exact pick (canonical title + deep-link); anything else is a tailored task the model
+ *  authored, attributed to its interview and linked to the application. Returns null if unusable. */
+function mapRawTask(t: RawTask, registry: Map<string, { practice: Practice; iv: IvDay }>, withDay: IvDay[]): GlobalPrepTask | null {
+  const minutes = typeof t.minutes === 'number' && t.minutes > 0 ? t.minutes : undefined
+
+  const reg = t.ref ? registry.get(t.ref.trim()) : undefined
+  if (reg) {
+    const { practice, iv } = reg
+    return {
+      round: iv.round.type,
+      text: practice.text,
+      minutes: minutes ?? practice.minutes,
+      done: false,
+      jobId: iv.jobId,
+      company: iv.company,
+      role: iv.role,
+      roundLabel: iv.round.label || roundLabel(iv.round.type),
+      ...(practice.link ? { link: practice.link } : {}),
+    }
+  }
+
+  const text = t.text?.trim()
+  if (!text) return null
+  const iv = t.interview != null ? withDay[t.interview - 1] : undefined
+  const task: GlobalPrepTask = { round: iv ? iv.round.type : 'review', text, done: false }
+  if (minutes) task.minutes = minutes
+  if (iv) {
+    task.jobId = iv.jobId
+    task.company = iv.company
+    task.role = iv.role
+    task.roundLabel = iv.round.label || roundLabel(iv.round.type)
+    task.link = { to: `/app/${iv.jobId}` }
+  }
+  return task
+}
+
+/** Ask the LLM for a tailored plan grounded in each interview's context + coded saved questions. */
+async function planWithLLM(withDay: IvDay[], findJob: (id: string) => JobDescription | null, today: string, span: number): Promise<GlobalPrepDay[]> {
+  const registry = new Map<string, { practice: Practice; iv: IvDay }>()
+  let q = 0
+
+  const lines = withDay.map((iv, idx) => {
+    const job = findJob(iv.jobId)
+    const { items, mock } = job ? roundPractice(job, iv.round.type) : { items: [], mock: null }
+    const roundLbl = iv.round.label || roundLabel(iv.round.type)
+    const codeLines: string[] = []
+    for (const it of items) {
+      const code = `Q${++q}`
+      registry.set(code, { practice: it, iv })
+      codeLines.push(`     ${code} ${it.text} (${it.minutes}m)`)
+    }
+    if (mock) {
+      const code = `M${idx + 1}`
+      registry.set(code, { practice: mock, iv })
+      codeLines.push(`     ${code} ${mock.text} (${mock.minutes}m)`)
+    }
+    const focus = (iv.round.focusAreas ?? []).filter((a) => a.trim())
+    return [
+      `${idx + 1}. ${iv.company} — ${iv.role} · ${roundLbl} · interview in ${iv.day - 1} day(s), on day ${iv.day} (${iv.round.scheduledAt})`,
+      `   Interviewer intel: ${iv.round.notes?.trim() || '(none given — infer from role, round, and JD)'}`,
+      iv.round.topic?.trim() ? `   Topic: ${iv.round.topic.trim()}` : '',
+      focus.length ? `   Focus areas: ${focus.join('; ')}` : '',
+      codeLines.length
+        ? `   Saved questions to practice (reference by CODE, don't rename):\n${codeLines.join('\n')}`
+        : '   Saved questions: (none selected — author tailored prep from the round + intel)',
+    ]
+      .filter(Boolean)
+      .join('\n')
+  })
+
+  const user = [
+    `TODAY is day 1. Build ONE plan over exactly ${span} day(s) (dayIndex 1..${span}).`,
+    'These interviews run in parallel — reference each by its number:',
+    '',
+    lines.join('\n'),
+  ].join('\n')
+
+  const { parsed } = await chatStructured<{ days: RawDay[] }>({
+    provider: 'anthropic',
+    model: PREP_PLAN_CRITERIA.model,
+    system: PREP_PLAN_CRITERIA.systemPrompt,
+    user,
+    schema: PREP_PLAN_CRITERIA.schema,
+    maxTokens: 5000,
+    thinking: 'adaptive',
+  })
+
+  const buckets = new Map<number, GlobalPrepTask[]>()
+  for (const d of parsed.days ?? []) {
+    if (!(d.dayIndex >= 1 && d.dayIndex <= span)) continue
+    for (const t of d.tasks ?? []) {
+      const task = mapRawTask(t, registry, withDay)
+      if (task) (buckets.get(d.dayIndex) ?? buckets.set(d.dayIndex, []).get(d.dayIndex)!).push(task)
+    }
+  }
+  return daysFromBuckets(buckets, today, span)
+}
+
+/** Deterministic fallback: lay each interview's saved picks across its run-up, front-loaded, with the
+ *  timed mock on the interview day; a pick-less round gets one grounding review task. No LLM. */
+function buildDeterministicDays(withDay: IvDay[], findJob: (id: string) => JobDescription | null, today: string, span: number): GlobalPrepDay[] {
   const buckets = new Map<number, GlobalPrepTask[]>()
   const put = (dayIndex: number, task: GlobalPrepTask) => {
     const d = Math.min(Math.max(dayIndex, 1), span)
@@ -230,28 +359,18 @@ export async function generateGlobalPrepPlan(jobs: JobDescription[]): Promise<Gl
 
     const job = findJob(iv.jobId)
     const { items, mock } = job ? roundPractice(job, iv.round.type) : { items: [], mock: null }
-    const end = Math.min(iv.day, span) // the interview's own day, within the window
-    // Reserve the interview day for the mock when there's at least one earlier day to prep on.
+    const end = Math.min(iv.day, span)
     const contentEnd = mock && end > 1 ? end - 1 : end
 
     if (items.length === 0) {
-      // No curated picks (take-home / project / custom, or nothing selected yet): a single grounding
-      // review task, using the round's own topic/focus if the candidate flagged any.
       const focus = (iv.round.focusAreas ?? []).filter((a) => a.trim())
       const about = iv.round.topic?.trim() || focus.join(', ') || 'key topics + your stories'
       put(contentEnd, attribute({ text: `Review ${roundLbl}: ${about}`, minutes: 30, link: { to: `/app/${iv.jobId}` } }))
     } else {
-      // Spread the saved questions evenly over days 1..contentEnd, front-loaded (earliest reps first).
       items.forEach((p, k) => put(1 + Math.floor((k * contentEnd) / items.length), attribute(p)))
     }
     if (mock) put(end, attribute(mock))
   }
 
-  const days: GlobalPrepDay[] = []
-  for (let d = 1; d <= span; d++) {
-    const tasks = buckets.get(d)
-    if (tasks?.length) days.push({ date: addDays(today, d - 1), focus: dayFocus(tasks), tasks })
-  }
-
-  return { generatedAt: new Date().toISOString(), signature, days }
+  return daysFromBuckets(buckets, today, span)
 }

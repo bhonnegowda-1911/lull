@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import {
   activeRound,
   activeRounds,
@@ -16,13 +16,16 @@ import { upcomingRounds } from '../lib/application/agenda'
 import { activeInterviews, generateGlobalPrepPlan, prepInputSignature } from '../lib/application/globalPrepPlan'
 import type { Application, JobDescription, RoundType, StageOutcome } from '../types'
 
-// A deterministic stand-in for the LLM call: returns a two-day plan whose tasks reference interview
-// numbers 1 and 2 (plus a general rest task), so we can assert dayIndex→date mapping and attribution.
-// The plan is built deterministically from saved picks; stub the banks so pick IDs resolve to
-// predictable titles/labels without depending on the real question banks.
+// Stub the banks so pick IDs resolve to predictable titles/labels without depending on the real
+// question banks, and stub the LLM so the planner is deterministic: tests default to a rejected call
+// (exercising the deterministic fallback), and the LLM-path test overrides it with a canned plan.
 vi.mock('../data/prompts', () => ({ getPrompt: (id: string) => ({ label: `Prompt ${id}` }) }))
 vi.mock('../data/sysdesign/problems', () => ({ getProblem: (id: string) => ({ title: `SysDesign ${id}` }) }))
 vi.mock('../data/coding/problems', () => ({ getProblem: (id: string) => ({ title: `Coding ${id}` }) }))
+vi.mock('../lib/llmClient', () => ({ chatStructured: vi.fn() }))
+
+import { chatStructured } from '../lib/llmClient'
+const mockChat = vi.mocked(chatStructured)
 
 describe('schedule date helpers', () => {
   it('adds days across month boundaries', () => {
@@ -289,6 +292,13 @@ describe('generateGlobalPrepPlan', () => {
   const pick = (problemId: string) => ({ problemId, confidence: 'high' as const, rationale: 'r' })
   const prompt = (promptId: string) => ({ promptId, confidence: 'high' as const, rationale: 'r' })
 
+  // Default: the LLM call fails, so these exercise the deterministic fallback. The LLM-path test below
+  // overrides mockChat with a canned plan.
+  beforeEach(() => {
+    mockChat.mockReset()
+    mockChat.mockRejectedValue(new Error('no backend'))
+  })
+
   it('spreads an interview\'s saved questions across its run-up, front-loaded, closing with a timed mock', async () => {
     const today = toISODate()
     const acme = jobWith({ id: 'a', company: 'Acme', type: 'technical_screen', scheduledAt: addDays(today, 3) })
@@ -347,6 +357,40 @@ describe('generateGlobalPrepPlan', () => {
     const tasks = plan.days.flatMap((d) => d.tasks)
     expect(tasks).toHaveLength(1)
     expect(tasks[0]).toMatchObject({ text: 'Review Take-home assignment: Design doc', minutes: 30, company: 'Acme' })
+  })
+
+  it('uses the LLM plan: resolves saved-question codes to exact titles + links, and keeps tailored tasks', async () => {
+    const today = toISODate()
+    const acme = jobWith({ id: 'a', company: 'Acme', type: 'technical_screen', scheduledAt: addDays(today, 2) })
+    acme.codingPicks = [pick('c1')] // becomes code Q1, and the mock becomes M1
+
+    mockChat.mockResolvedValue({
+      parsed: {
+        days: [
+          {
+            dayIndex: 1,
+            tasks: [
+              // References a saved question by code → app supplies the canonical title + deep-link.
+              { interview: 1, ref: 'Q1', text: 'whatever the model calls it', minutes: 40 },
+              // A tailored, model-authored task (ref null) → attributed + linked to the application.
+              { interview: 1, ref: null, text: 'Form a POV on Acme’s architecture for the CTO', minutes: 30 },
+            ],
+          },
+          { dayIndex: 2, tasks: [{ interview: 1, ref: 'M1', text: 'mock', minutes: 45 }] },
+        ],
+      },
+    } as never)
+
+    const plan = await generateGlobalPrepPlan([acme])
+    expect(mockChat).toHaveBeenCalledOnce()
+    const day1 = plan.days[0].tasks
+
+    // Coded task: canonical title + deep-link win over the model's text; LLM's minutes are kept.
+    expect(day1[0]).toMatchObject({ text: 'Solve: Coding c1', minutes: 40, company: 'Acme', link: { to: '/practice/coding', state: { startProblemId: 'c1' } } })
+    // Tailored task: kept as authored, attributed, and linked to the application.
+    expect(day1[1]).toMatchObject({ text: 'Form a POV on Acme’s architecture for the CTO', minutes: 30, company: 'Acme', link: { to: '/app/a' } })
+    // The mock code resolves to the canonical mock task.
+    expect(plan.days[1].tasks[0]).toMatchObject({ text: 'Full timed mock: Technical screen', minutes: 45 })
   })
 
   it('returns an empty plan when nothing is scheduled', async () => {
