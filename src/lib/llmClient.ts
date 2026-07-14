@@ -5,6 +5,7 @@
 
 import { apiFetch } from './api'
 import { getAnthropicKey } from './userKeys'
+import { parsePartialJson } from './partialJson'
 
 export type Provider = 'anthropic' | 'openai'
 
@@ -119,4 +120,107 @@ export async function chatStructured<T = unknown>(
   }
   if (data.parsed === undefined) throw new LlmError('Empty analysis response.', { code: 'empty' })
   return { parsed: data.parsed, raw: data.raw ?? {} }
+}
+
+/** Progress events surfaced while a streamed completion is in flight. */
+export type StreamEvent<T> =
+  /** The model moved into its `thinking` phase (silent) or started `writing` the JSON answer. */
+  | { type: 'phase'; phase: 'thinking' | 'writing' }
+  /** Best-effort snapshot of the answer parsed from the JSON streamed so far. */
+  | { type: 'partial'; value: Partial<T> }
+
+/**
+ * Streaming variant of {@link chatStructured}. Runs the same structured-output request through the
+ * SSE gateway (`/api/llm/chat/stream`) and invokes `onEvent` as the model works — a phase change, or
+ * a progressively-parsed partial answer — so the UI can reveal fields as they close instead of
+ * blocking on a spinner. Resolves with the same `{ parsed, raw }` as the blocking call. Callers that
+ * don't need progress can keep using `chatStructured`.
+ */
+export async function chatStructuredStream<T = unknown>(
+  req: ChatStructuredRequest,
+  onEvent: (ev: StreamEvent<T>) => void,
+): Promise<{ parsed: T; raw: AnthropicResponse }> {
+  const { signal, ...body } = req
+  const headers: Record<string, string> = { 'content-type': 'application/json' }
+  const userKey = getAnthropicKey()
+  if (userKey) headers['x-anthropic-key'] = userKey
+
+  let res: Response
+  try {
+    res = await apiFetch(`/api/llm/chat/stream`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal,
+    })
+  } catch (e) {
+    if ((e as Error)?.name === 'AbortError') throw e
+    throw new LlmError('Network error reaching the analysis service.', { code: 'network' })
+  }
+
+  // Pre-stream failures come back as ordinary JSON (bad key, upstream overloaded, etc.).
+  if (!res.ok) {
+    let message = `Analysis failed (${res.status}).`
+    try {
+      const err = (await res.json()) as { error?: string }
+      if (err?.error) message = err.error
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new LlmError(message, { code: codeForStatus(res.status) })
+  }
+  if (!res.body) throw new LlmError('Empty analysis response.', { code: 'empty' })
+
+  const reader = res.body.getReader()
+  const decoder = new TextDecoder()
+  let buf = ''
+  let jsonText = ''
+  let lastEmitted = ''
+  let done: { parsed: T; raw: AnthropicResponse } | null = null
+  let streamError: LlmError | null = null
+
+  const handleFrame = (frame: string) => {
+    const lines = frame.split('\n')
+    const event = lines.find((l) => l.startsWith('event:'))?.slice(6).trim()
+    const dataLine = lines.find((l) => l.startsWith('data:'))
+    if (!event || !dataLine) return
+    let payload: Record<string, unknown>
+    try {
+      payload = JSON.parse(dataLine.slice(5).trim())
+    } catch {
+      return
+    }
+    if (event === 'phase') {
+      onEvent({ type: 'phase', phase: payload.phase as 'thinking' | 'writing' })
+    } else if (event === 'text') {
+      jsonText += String(payload.text ?? '')
+      // Only re-parse + emit when the snapshot actually changed, to avoid churn on every token.
+      const snapshot = JSON.stringify(parsePartialJson(jsonText) ?? null)
+      if (snapshot !== lastEmitted) {
+        lastEmitted = snapshot
+        const value = parsePartialJson(jsonText)
+        if (value && typeof value === 'object') onEvent({ type: 'partial', value: value as Partial<T> })
+      }
+    } else if (event === 'done') {
+      done = { parsed: payload.parsed as T, raw: (payload.raw as AnthropicResponse) ?? {} }
+    } else if (event === 'error') {
+      streamError = new LlmError(String(payload.message || 'Analysis failed.'), { code: 'http' })
+    }
+  }
+
+  for (;;) {
+    const { done: streamDone, value } = await reader.read()
+    if (streamDone) break
+    buf += decoder.decode(value, { stream: true })
+    let idx: number
+    while ((idx = buf.indexOf('\n\n')) !== -1) {
+      handleFrame(buf.slice(0, idx))
+      buf = buf.slice(idx + 2)
+    }
+  }
+  if (buf.trim()) handleFrame(buf)
+
+  if (streamError) throw streamError
+  if (!done) throw new LlmError('The analysis stream ended unexpectedly.', { code: 'empty' })
+  return done
 }

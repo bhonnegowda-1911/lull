@@ -197,6 +197,12 @@ export interface AnalyzerContext {
   /** When set: the target job to grade fit against (company values + JD must-haves). */
   job?: ParsedJob | null
   signal?: AbortSignal
+  /**
+   * When provided, the LLM analyzer streams its grade and calls this as it progresses: a `phase`
+   * change (thinking → writing) and/or a `partial` best-effort grading parsed from the JSON so far.
+   * Absent → the analyzer uses the plain blocking call. Only the STAR grading streams today.
+   */
+  onGradeProgress?: (ev: { phase?: 'thinking' | 'writing'; partial?: Partial<StarGrading> }) => void
 }
 
 export interface Session {
@@ -491,6 +497,30 @@ export interface GeneratedResume {
   summary: string
   skills: { category: string; items: string[] }[]
   experience: ResumeExperience[]
+}
+
+// Style cues inferred from the candidate's uploaded resume file (PDF/Word), used to approximate their
+// own look in the generated PDF export instead of the app's fixed template. Best-effort — arbitrary
+// fonts can't be embedded, so `fontFamily` maps to the nearest PDF base-14 family. See lib/resume/
+// parseFile.ts (inference) and lib/resume/pdf.tsx (rendering).
+export type ResumeFontFamily = 'sans' | 'serif' | 'mono'
+/** A section the renderer can reorder to match the candidate's original. */
+export type ResumeSectionKey = 'summary' | 'skills' | 'experience'
+
+export interface ResumeStyle {
+  fontFamily: ResumeFontFamily
+  /** Body font size in pt (clamped to a sane 9–12 range). */
+  baseFontSize: number
+  /** Name/header font size in pt. */
+  nameSize: number
+  /** Section-heading font size in pt. */
+  headingSize: number
+  /** Header alignment inferred from the original ('center' if the name sits mid-page). */
+  headerAlign: 'left' | 'center'
+  /** Order of the supported sections as they appeared in the original; unknown sections are ignored. */
+  sectionOrder: ResumeSectionKey[]
+  /** Accent/heading color as a hex string. */
+  accentColor: string
 }
 
 // ---- Recorded interview review + grading ---------------------------------

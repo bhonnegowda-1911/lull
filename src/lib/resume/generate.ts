@@ -1,8 +1,8 @@
 import { chatStructured } from '../llmClient'
 import { RESUME_GEN_CRITERIA } from '../../data/resumeCriteria'
 import { FACETS, facetText, type Project } from '../../data/projects'
-import type { Story, Profile } from '../../data/stories'
-import type { GeneratedResume, ParsedJob } from '../../types'
+import { emptyStory, type Story, type Profile } from '../../data/stories'
+import type { GeneratedResume, ParsedJob, ResumeFit } from '../../types'
 
 // Generate a JD-targeted resume grounded STRICTLY in the candidate's own ground truth (story bank +
 // project facets). The generator's objective is the Phase-1 fit score: a tailored draft should beat
@@ -70,6 +70,82 @@ export function serializeSources({
   ].join('\n')
 }
 
+/** Turn the prior resume↔JD fit run into an explicit worklist of what to SURFACE while tailoring: the
+ *  requirements the stored resume under-evidences and the gaps the analyzer thinks the candidate can
+ *  actually close from their own history. This is the signal that tells the generator where to promote
+ *  latent story/project experience instead of just echoing the resume verbatim. Pure. */
+export function serializeTailoringTargets(fit: ResumeFit): string {
+  const weak = fit.requirementCoverage.filter((r) => r.status !== 'covered')
+  // 'reword' = they likely have it, resume just doesn't show it; 'add_story' = a story covers it.
+  // 'genuine_gap' is a real missing qualification — surface it so the model does NOT try to fake it.
+  const closeable = fit.gaps.filter((g) => g.fixable === 'reword' || g.fixable === 'add_story')
+  const realGaps = fit.gaps.filter((g) => g.fixable === 'genuine_gap')
+
+  const lines: string[] = [
+    'FIT ANALYSIS OF THE STORED RESUME AGAINST THIS JOB — use it to decide what to SURFACE (do NOT invent):',
+  ]
+  if (fit.keywordCoverage.missing.length)
+    lines.push(`- JD keywords the stored resume is missing: ${fit.keywordCoverage.missing.join(', ')}`)
+  if (weak.length) {
+    lines.push('- Requirements the stored resume under-evidences (surface real experience for these from ANY source — resume, stories, or projects):')
+    for (const r of weak) lines.push(`    • [${r.status}] ${r.requirement}`)
+  }
+  if (closeable.length) {
+    lines.push('- Gaps the analyzer believes you can close from your own history — pull the matching story/project forward as a bullet:')
+    for (const g of closeable) lines.push(`    • (${g.fixable}) ${g.title}: ${g.detail}`)
+  }
+  if (realGaps.length) {
+    lines.push('- GENUINE gaps (no source supports these — do NOT fabricate experience for them):')
+    for (const g of realGaps) lines.push(`    • ${g.title}`)
+  }
+  return lines.join('\n')
+}
+
+/** A gap the candidate answered with a fresh story while tailoring: the JD requirement (from the fit
+ *  run) and the candidate's own note describing the real experience that covers it. */
+export interface GapFill {
+  requirement: string
+  note: string
+}
+
+/** Turn gap answers the candidate typed at generate-time into first-class Story sources so the
+ *  generator can ground bullets on them exactly like bank stories (sourceStoryId → id). Ids are
+ *  deterministic `gapfill-N` so provenance stays checkable; the note becomes the story situation and
+ *  the requirement its title so the tailoring targets line up. Empty notes are dropped. Pure. */
+export function gapFillsToStories(fills: GapFill[]): Story[] {
+  return fills
+    .map((f, i) => ({ f, i }))
+    .filter(({ f }) => f.note.trim())
+    .map(({ f, i }) => {
+      const s = emptyStory(`gapfill-${i}`)
+      s.title = f.requirement.trim() || `Gap ${i + 1}`
+      s.star.situation = f.note.trim()
+      s.status = 'draft'
+      return s
+    })
+}
+
+/** Deterministic one-page guard. Even with firm length rules in the prompt, the model sometimes
+ *  overshoots and the exported resume spills onto a second page. This caps the bullet count so it
+ *  can't — keeping the model's ordering (it's told to lead with the most JD-relevant bullets): the
+ *  most recent role keeps up to FIRST_ROLE_BULLETS, older roles up to OLDER_ROLE_BULLETS, with a hard
+ *  overall ceiling. Trimming only removes the least-relevant trailing bullets; nothing is reworded.
+ *  Pure, so it's unit-tested. */
+export function trimResumeToOnePage(resume: GeneratedResume): GeneratedResume {
+  const FIRST_ROLE_BULLETS = 5
+  const OLDER_ROLE_BULLETS = 3
+  const MAX_TOTAL_BULLETS = 15
+  let used = 0
+  const experience = resume.experience.map((exp, i) => {
+    const cap = i === 0 ? FIRST_ROLE_BULLETS : OLDER_ROLE_BULLETS
+    const remaining = Math.max(0, MAX_TOTAL_BULLETS - used)
+    const bullets = exp.bullets.slice(0, Math.min(cap, remaining))
+    used += bullets.length
+    return { ...exp, bullets }
+  })
+  return { ...resume, experience }
+}
+
 /** Render a generated resume to markdown — used for both export and re-scoring against the JD. Pure. */
 export function resumeToMarkdown(resume: GeneratedResume): string {
   const out: string[] = []
@@ -91,13 +167,13 @@ export function resumeToMarkdown(resume: GeneratedResume): string {
   return out.join('\n')
 }
 
-/** A safe download filename for the resume PDF, slugified from the candidate's name. Pure. */
-export function resumeFileName(resume: GeneratedResume): string {
+/** A safe download filename for the resume, slugified from the candidate's name. Pure. */
+export function resumeFileName(resume: GeneratedResume, ext: 'pdf' | 'docx' = 'pdf'): string {
   const slug = (resume.header.name || '')
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
-  return slug ? `${slug}-resume.pdf` : 'resume.pdf'
+  return slug ? `${slug}-resume.${ext}` : `resume.${ext}`
 }
 
 /** Bullets whose provenance doesn't resolve to a story/project id or the resume — the grounding check. Pure. */
@@ -121,6 +197,7 @@ export async function generateResume({
   stories,
   projects,
   job,
+  fit,
   signal,
 }: {
   profile: Profile
@@ -128,13 +205,16 @@ export async function generateResume({
   projects: Project[]
   /** The parsed target job to tailor toward; omit for a generic resume. */
   job?: ParsedJob | null
+  /** The prior resume↔JD fit run, if one exists — its gaps/coverage tell the generator which real
+   *  experience the stored resume failed to surface, so tailoring promotes it instead of parroting. */
+  fit?: ResumeFit | null
   signal?: AbortSignal
 }): Promise<GeneratedResume> {
   const user = [
     job ? `TARGET JOB (tailor toward this, but only with real experience):\n${JSON.stringify(job, null, 2)}` : 'NO TARGET JOB — write a strong generic resume.',
-    '',
+    ...(job && fit ? [serializeTailoringTargets(fit)] : []),
     serializeSources({ profile, stories, projects }),
-  ].join('\n')
+  ].join('\n\n')
 
   const { parsed } = await chatStructured<GeneratedResume>({
     provider: 'anthropic',
@@ -146,5 +226,6 @@ export async function generateResume({
     // Opus 4.7 rejects `temperature` — omit it (steer via prompt instead).
     signal,
   })
-  return parsed
+  // Backstop the prompt's length rules so an over-eager draft can never overflow a page.
+  return trimResumeToOnePage(parsed)
 }

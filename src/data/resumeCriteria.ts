@@ -221,9 +221,24 @@ Languages, Databases, Cloud, etc.). If no clearly appropriate category exists, C
 one such as "AI / Developer Tools" and put it there. Keep it factual and unembellished — never inflate
 it into a metric or accomplishment.
 
-TAILORING: when a TARGET JOB is provided, prioritize and phrase the bullets, summary, and skills to
-echo its must-have requirements and ATS keywords — but ONLY using real experience from the sources.
-Never claim a skill the sources don't support. When no job is provided, write a strong generic resume.
+TAILORING (non-negotiable — this is the POINT of a tailored resume): when a TARGET JOB is provided, the
+stored resume is a STARTING POINT, not a ceiling. The candidate's stories and project facets are just as
+real as their resume, and they routinely contain experience that matches a JD requirement which the
+stored resume never surfaced. Your job is to close that gap:
+  • For each must-have requirement and ATS keyword in the JD, look across ALL sources — resume, stories,
+    AND projects — for real evidence the candidate has done it. If a story or project supports a
+    requirement that the stored resume buries or omits, PROMOTE it: add a bullet (sourceStoryId/
+    sourceProjectId) or rewrite an existing bullet so that experience is visible and uses the JD's
+    language. Surfacing genuine-but-hidden experience is REQUIRED, not optional — do not leave a
+    requirement looking uncovered when a source actually supports it.
+  • Reorder bullets and skills so the JD-relevant ones lead. Phrase real accomplishments in the JD's
+    terminology (without changing what happened or inventing a metric).
+  • If a FIT ANALYSIS block is provided, treat it as your worklist: its under-evidenced requirements and
+    its 'reword'/'add_story' gaps are exactly the places to pull matching story/project experience
+    forward. Its 'genuine_gap' items have NO supporting source — never fabricate experience to cover them.
+  • The floor stays hard: never claim a skill or accomplishment no source supports, and never invent a
+    metric. Tailoring means re-selecting, re-ordering, and re-languaging REAL experience — not inflating it.
+When no job is provided, write a strong generic resume.
 
 IDENTITY & CONTACT (non-negotiable): copy the candidate's real NAME and CONTACT details — email,
 phone, location, and links like LinkedIn/GitHub — VERBATIM from the EXISTING RESUME into the header.
@@ -231,6 +246,18 @@ Never invent or alter them; if the resume has none, leave the field an empty str
 "title" is the candidate's OWN current/most-recent professional title taken from their EXISTING RESUME
 (or roles) — NOT a marketing tagline and NOT derived from the target job. The identity header is fixed
 to who they are; tailoring changes ONLY the summary, skills, and bullet content — never the header.
+
+LENGTH & ATS FORMAT (non-negotiable — the #1 failure is a resume that runs past one page, so treat every
+number below as a HARD limit, not a target; when in doubt, cut):
+  • ONE PAGE, standard single-column reverse-chronological ATS format.
+  • Summary: AT MOST 2 sentences.
+  • Bullets per role: the most recent / most relevant role gets AT MOST 5 bullets; every older role AT
+    MOST 3; AT MOST ~15 bullets across the entire resume. Drop or merge low-signal roles and bullets.
+  • Each bullet is ONE line — a single clause of AT MOST ~20 words. Do NOT join two accomplishments with
+    "and" / ";" / "—"; if a bullet carries two ideas, keep the stronger one and drop the other. Lead with
+    a strong verb, cut filler ("responsible for", "helped to", "worked on"), no sub-bullets.
+  • Prioritize bullets that match the target job — the ones you cut should be the least JD-relevant.
+  • Plain text only (the exporter handles layout) — no tables, columns, graphics, or special characters.
 
 Output a header (name + title + a single contact line), a 2–3 sentence summary (per the SUMMARY rules
 above), grouped skills, and experience grouped by role with grounded bullets.`,
@@ -284,6 +311,61 @@ above), grouped skills, and experience grouped by role with grounded bullets.`,
       },
     },
     required: ['header', 'summary', 'skills', 'experience'],
+    additionalProperties: false,
+  },
+}
+
+// ---- Review the candidate's gap-fill answers before generation (Phase 2b) -------------------------
+// After the candidate types a short answer to close a JD gap, coach the answer: is it specific and
+// quantified enough to become a strong resume bullet? Never rewrite it or invent facts — only judge it
+// and ask for the missing specifics. Non-blocking in the UI: the candidate can refine or generate anyway.
+
+export const GAP_REVIEW_CRITERIA: Criteria = {
+  id: 'gapReview',
+  label: 'Gap-answer review',
+  model: FAST_MODEL,
+  systemPrompt: `You coach a candidate's short answers that fill gaps in their resume for a specific
+target job. Each answer describes real experience that should become a resume bullet. Judge each
+answer — do NOT rewrite it, and NEVER invent facts or numbers on the candidate's behalf.
+
+For each answer decide:
+  • needsQuantification: true when the requirement implies measurable impact (performance, scale,
+    cost, revenue, adoption, reliability, team size, latency, throughput) AND the answer states no
+    number. Engineering-impact requirements almost always want a metric; pure-fact/qualification
+    requirements (e.g. "holds a security clearance") do not.
+  • tooVague: true when the answer is generic and gives no concrete detail on what THEY did, the tech
+    used, or the scope (e.g. "worked on the pipeline", "helped with performance").
+  • sufficient: true ONLY when the answer is specific and (if impact is expected) quantified enough to
+    write a credible bullet with no further questions.
+
+Write 1–3 short, pointed follow-up QUESTIONS that would elicit exactly the missing specifics — phrased
+as questions to the candidate ("By how much did latency drop?", "How many events/day?", "What was your
+role vs the team's?"). If sufficient is true, return an empty followups array. Keep questions concrete
+and answerable; never ask for something the requirement doesn't need.`,
+  schema: {
+    type: 'object',
+    properties: {
+      reviews: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            requirement: { type: 'string', description: 'The gap requirement this answer addresses (echo it back).' },
+            sufficient: { type: 'boolean', description: 'True when the answer needs no further detail to become a strong bullet.' },
+            needsQuantification: { type: 'boolean', description: 'True when a metric is expected for this requirement but the answer has none.' },
+            tooVague: { type: 'boolean', description: 'True when the answer lacks concrete specifics (what, tech, scope).' },
+            followups: {
+              type: 'array',
+              description: '1–3 concrete follow-up questions to elicit the missing specifics; empty when sufficient.',
+              items: { type: 'string' },
+            },
+          },
+          required: ['requirement', 'sufficient', 'needsQuantification', 'tooVague', 'followups'],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ['reviews'],
     additionalProperties: false,
   },
 }

@@ -1,4 +1,5 @@
 import { DEFAULT_PROFILE, type Profile } from '../data/stories'
+import type { ResumeStyle } from '../types'
 
 // Client for the profile (resume + target level), backed by the server. Like sessionStore, every
 // call degrades gracefully: if the backend is unreachable the app falls back to DEFAULT_PROFILE
@@ -12,6 +13,8 @@ interface ProfileRow {
   resume_text: string | null
   roles: Profile['roles'] | null
   target_level: string | null
+  /** Present only if the server has been taught to store it; otherwise we fall back to the cache. */
+  resume_style?: ResumeStyle | null
 }
 
 function fromRow(row: ProfileRow): Profile {
@@ -19,6 +22,7 @@ function fromRow(row: ProfileRow): Profile {
     resumeText: row.resume_text ?? '',
     roles: Array.isArray(row.roles) ? row.roles : [],
     targetLevel: (row.target_level as Profile['targetLevel']) || 'senior',
+    resumeStyle: row.resume_style ?? null,
   }
 }
 
@@ -43,7 +47,11 @@ export async function getProfile(): Promise<Profile> {
   try {
     const res = await apiFetch(`/api/profile`)
     if (!res.ok) return readCache()
-    const profile = fromRow((await res.json()) as ProfileRow)
+    const fromServer = fromRow((await res.json()) as ProfileRow)
+    // The server persists only text/roles/level; keep the locally-cached upload fields (style + the
+    // original resume file: asset id, kind, Word HTML) so the Resume tab can still render the file.
+    const cached = readCache()
+    const profile: Profile = { ...cached, ...fromServer, resumeStyle: fromServer.resumeStyle ?? cached.resumeStyle ?? null }
     writeCache(profile)
     return profile
   } catch {

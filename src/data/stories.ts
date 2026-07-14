@@ -1,5 +1,5 @@
 import { PROMPT_CATEGORIES } from './prompts'
-import type { BehavioralLevel } from '../types'
+import type { BehavioralLevel, ResumeStyle } from '../types'
 
 // The Profile (resume + target level) and Story bank domain types. A "story" is a curated,
 // ground-truth work narrative the coaching grader reads to critique CONTENT — never shown to the
@@ -23,9 +23,27 @@ export interface Profile {
   resumeText: string
   roles: RoleEntry[]
   targetLevel: BehavioralLevel
+  /** Style cues from the candidate's uploaded resume file, used to approximate their look in the
+   *  generated PDF. Absent when the resume was pasted as plain text. */
+  resumeStyle?: ResumeStyle | null
+  /** Asset id of the candidate's ORIGINAL uploaded resume file, so the Resume tab can render the real
+   *  file (exact for PDF) instead of reconstructed text. Absent when nothing was uploaded. */
+  resumeAssetId?: string | null
+  /** The uploaded file's kind, so the preview knows whether to embed a PDF or render Word HTML. */
+  resumeFileType?: 'pdf' | 'docx' | null
+  /** For Word uploads only: mammoth-converted HTML, since browsers can't embed a .docx directly. */
+  resumeHtml?: string | null
 }
 
-export const DEFAULT_PROFILE: Profile = { resumeText: '', roles: [], targetLevel: 'senior' }
+export const DEFAULT_PROFILE: Profile = {
+  resumeText: '',
+  roles: [],
+  targetLevel: 'senior',
+  resumeStyle: null,
+  resumeAssetId: null,
+  resumeFileType: null,
+  resumeHtml: null,
+}
 
 /**
  * The S/T/A/R ground truth — what actually happened, in the candidate's own record. `takeaway` is

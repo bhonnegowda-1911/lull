@@ -3,7 +3,7 @@ import { makeLlmAnalyzer } from './analyzers/llmAnalyzer'
 import { DEFAULT_CRITERIA, type Criteria } from '../data/criteria'
 import type { Story } from '../data/stories'
 import type { Project } from '../data/projects'
-import type { AnalyzerContext, FillerAnalyzerResult, LlmAnalyzerResult, ParsedJob, Transcript } from '../types'
+import type { AnalyzerContext, FillerAnalyzerResult, FillerResult, LlmAnalyzerResult, ParsedJob, StarGrading, Transcript } from '../types'
 
 // Orchestrates the two analyzers. Filler analysis runs first (local, instant, free) and
 // its result is injected into the LLM context so the coaching can reference it — one LLM
@@ -28,6 +28,15 @@ export interface PipelineInput {
   job?: ParsedJob | null
   signal?: AbortSignal
   onProgress?: (stage: PipelineStage) => void
+  /**
+   * Streams the STAR grade as it's produced: a `phase` change (the model thinking vs. writing) and
+   * `partial` snapshots parsed from the JSON so far, so the UI can reveal scores/beats progressively
+   * instead of blocking. Omit for the plain blocking grade.
+   */
+  onGrade?: (ev: { phase?: 'thinking' | 'writing'; partial?: Partial<StarGrading> }) => void
+  /** Fires with the local filler result the instant it's computed — before the LLM grade starts — so
+   *  the UI can show at least one real number immediately instead of an empty spinner. */
+  onFiller?: (filler: FillerResult) => void
 }
 
 export async function runPipeline({
@@ -40,6 +49,8 @@ export async function runPipeline({
   job,
   signal,
   onProgress = () => {},
+  onGrade,
+  onFiller,
 }: PipelineInput): Promise<{ filler: FillerAnalyzerResult; llm: LlmAnalyzerResult }> {
   const baseCtx: AnalyzerContext = {
     question,
@@ -50,10 +61,12 @@ export async function runPipeline({
     projects,
     job,
     signal,
+    onGradeProgress: onGrade,
   }
 
   onProgress('fillers')
   const fillerResult = await fillerAnalyzer.run(baseCtx)
+  onFiller?.(fillerResult.raw)
 
   onProgress('analyzing')
   const llmAnalyzer = makeLlmAnalyzer(criteria)

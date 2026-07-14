@@ -24,7 +24,15 @@ import FeedbackPanel from './FeedbackPanel'
 import FollowUpAnswers from './FollowUpAnswers'
 import FocusTargets from './FocusTargets'
 import RealismChecklist from './RealismChecklist'
-import type { InterviewerPersona, ParsedJob, Session, Transcript } from '../types'
+import GradingProgress from './GradingProgress'
+import type { FillerResult, InterviewerPersona, ParsedJob, Session, StarGrading, Transcript } from '../types'
+
+/** Live grading progress surfaced while the STAR grade streams in (see GradingProgress). */
+interface GradeProgress {
+  phase?: 'thinking' | 'writing'
+  filler?: FillerResult | null
+  partial?: Partial<StarGrading> | null
+}
 
 // Behavioral practice: record the main answer → transcribe → the interviewer asks tailored
 // follow-ups, which you also answer → THEN the whole conversation (main answer + every follow-up
@@ -167,6 +175,8 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
   // The target job this practice was launched for (from a round's plan), or null for open practice.
   // When set, grading also rates the answer's fit to that company/JD bar.
   const [targetJob, setTargetJob] = useState<ParsedJob | null>(null)
+  // Live streamed grading progress (phase + partial grade + instant filler count), reset each grade.
+  const [gradeProgress, setGradeProgress] = useState<GradeProgress>({})
   // Who's running this round — shapes the follow-ups. A recruiter never asks technical questions.
   // Defaults to a hiring manager (open practice from the nav, unchanged from before).
   const [persona, setPersona] = useState<InterviewerPersona>('hiring_manager')
@@ -286,6 +296,7 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
   async function handleGetFeedback() {
     if (!state.mainTranscript) return
     dispatch({ type: 'GRADING' })
+    setGradeProgress({})
     const controller = new AbortController()
     abortRef.current = controller
     try {
@@ -311,6 +322,14 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
         // When launched from a round's plan, grade fit to that company/JD bar too (either mode).
         job: targetJob,
         signal: controller.signal,
+        // Stream the grade so the UI fills in progressively (see GradingProgress).
+        onFiller: (filler) => setGradeProgress((g) => ({ ...g, filler })),
+        onGrade: (ev) =>
+          setGradeProgress((g) => ({
+            ...g,
+            phase: ev.phase ?? g.phase,
+            partial: ev.partial ?? g.partial,
+          })),
       })
       const feedback = buildFeedback({ llm, filler })
       const session: Session = {
@@ -390,7 +409,7 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
           <Recorder mode={recordMode} onModeChange={setRecordMode} onUseTake={handleUseTake} disabled={busy} />
         )}
 
-        {busy && (
+        {busy && state.phase !== 'grading' && (
           <div className="rounded-xl border border-stone-200/80 bg-[#fcfaf6] p-8 text-center shadow-sm">
             <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-stone-200 border-t-terracotta-600" />
             <p className="mt-3 text-sm text-stone-600">{STAGE_LABEL[state.phase]}</p>
@@ -398,6 +417,10 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
               This sends your audio to OpenAI and Anthropic (via the backend) and usually takes 10–20s.
             </p>
           </div>
+        )}
+
+        {state.phase === 'grading' && (
+          <GradingProgress phase={gradeProgress.phase} filler={gradeProgress.filler} partial={gradeProgress.partial} />
         )}
 
         {/* Follow-up phase: probe before grading. */}

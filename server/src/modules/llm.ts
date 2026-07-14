@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import type { Request as ExpressRequest, Response as ExpressResponse } from 'express'
 import multer from 'multer'
 import { randomUUID } from 'node:crypto'
 import { spawn } from 'node:child_process'
@@ -108,19 +109,9 @@ function userContent(b: ChatBody): unknown {
   return blocks
 }
 
-// POST /api/llm/chat → { parsed, raw }
-llm.post('/chat', async (req, res) => {
-  const b = req.body as ChatBody
-  if ((b.provider ?? 'anthropic') !== 'anthropic') {
-    return res.status(400).json({ error: 'Only the anthropic provider is implemented.' })
-  }
-  // BYOK: prefer the user's own key (sent per request, never stored); fall back to the server's
-  // env key for local/single-user setups. Never log the key.
-  const apiKey = (req.header('x-anthropic-key') || ANTHROPIC_KEY).trim()
-  if (!apiKey) {
-    return res.status(503).json({ error: 'No Anthropic API key. Add yours in Settings, or set one on the server.' })
-  }
-
+// Assemble the Anthropic Messages request body from a ChatBody. Shared by the blocking and streaming
+// routes so both send an identical payload (the stream route just adds `stream: true`).
+function buildChatRequest(b: ChatBody): Record<string, unknown> {
   const outputConfig: Record<string, unknown> = { format: { type: 'json_schema', schema: b.schema } }
   if (b.effort) outputConfig.effort = b.effort
   const body: Record<string, unknown> = {
@@ -132,58 +123,207 @@ llm.post('/chat', async (req, res) => {
   }
   if (typeof b.temperature === 'number') body.temperature = b.temperature
   if (b.thinking) body.thinking = { type: b.thinking }
+  return body
+}
+
+interface AnthropicMessage {
+  content?: Array<{ type: string; text?: string }>
+  stop_reason?: string
+  usage?: unknown
+}
+
+// Apply the terminal checks to a completed (or assembled-from-stream) Anthropic response and extract
+// the parsed JSON. Returns either the parsed value or an error + HTTP status. Shared so the blocking
+// and streaming routes surface the exact same failure semantics.
+function finalizeChatData(data: AnthropicMessage): { parsed: unknown } | { error: string; status: number } {
+  if (data.stop_reason === 'refusal') {
+    return { error: 'The model declined to analyze this content.', status: 422 }
+  }
+  // Truncation produces incomplete JSON that then fails to parse — surface the real cause (the length
+  // limit) with an actionable message. The caller's maxTokens budget is too small; raising it is the fix.
+  if (data.stop_reason === 'max_tokens') {
+    return { error: 'The analysis was cut off before it finished (hit the length limit). Please try again.', status: 502 }
+  }
+  const textBlock = (data.content || []).find((c) => c.type === 'text')
+  if (!textBlock?.text) return { error: 'Empty analysis response.', status: 502 }
+  try {
+    return { parsed: JSON.parse(textBlock.text) }
+  } catch {
+    return { error: 'Could not parse the analysis response.', status: 502 }
+  }
+}
+
+// Anthropic key (BYOK per request, env fallback) or the JSON error response to send. Never logs the key.
+function resolveKeyOrReject(req: ExpressRequest, res: ExpressResponse): string | null {
+  if ((req.body?.provider ?? 'anthropic') !== 'anthropic') {
+    res.status(400).json({ error: 'Only the anthropic provider is implemented.' })
+    return null
+  }
+  const apiKey = (req.header('x-anthropic-key') || ANTHROPIC_KEY).trim()
+  if (!apiKey) {
+    res.status(503).json({ error: 'No Anthropic API key. Add yours in Settings, or set one on the server.' })
+    return null
+  }
+  return apiKey
+}
+
+// Build the JSON error message for a non-ok upstream (shared by both routes; sent as JSON pre-stream).
+function upstreamErrorMessage(status: number, detail: string): string {
+  // Still overloaded/saturated after retries — tell the user it's transient and to retry.
+  if (RETRYABLE_STATUS.has(status)) {
+    return `Anthropic is temporarily overloaded (${status})${detail}. Please try again in a moment.`
+  }
+  return `Analysis failed (${status})${detail}.`
+}
+
+async function upstreamErrorDetail(upstream: Response): Promise<string> {
+  try {
+    const err = (await upstream.json()) as { error?: { message?: string } }
+    return err?.error?.message ? `: ${err.error.message}` : ''
+  } catch {
+    return ''
+  }
+}
+
+// POST /api/llm/chat → { parsed, raw }
+llm.post('/chat', async (req, res) => {
+  const apiKey = resolveKeyOrReject(req, res)
+  if (!apiKey) return
+  const b = req.body as ChatBody
 
   let upstream: Response
   try {
-    upstream = await postAnthropicWithRetry(body, apiKey)
+    upstream = await postAnthropicWithRetry(buildChatRequest(b), apiKey)
   } catch {
     return res.status(502).json({ error: 'Network error reaching Anthropic.' })
   }
 
   if (!upstream.ok) {
-    let detail = ''
-    try {
-      const err = (await upstream.json()) as { error?: { message?: string } }
-      detail = err?.error?.message ? `: ${err.error.message}` : ''
-    } catch {
-      /* ignore */
-    }
-    // Still overloaded/saturated after retries — tell the user it's transient and to retry.
-    if (RETRYABLE_STATUS.has(upstream.status)) {
-      return res
-        .status(upstream.status)
-        .json({ error: `Anthropic is temporarily overloaded (${upstream.status})${detail}. Please try again in a moment.` })
-    }
-    return res.status(upstream.status).json({ error: `Analysis failed (${upstream.status})${detail}.` })
+    return res.status(upstream.status).json({ error: upstreamErrorMessage(upstream.status, await upstreamErrorDetail(upstream)) })
   }
 
-  const data = (await upstream.json()) as {
-    content?: Array<{ type: string; text?: string }>
-    stop_reason?: string
-    usage?: unknown
-  }
-  if (data.stop_reason === 'refusal') {
-    return res.status(422).json({ error: 'The model declined to analyze this content.' })
-  }
-  // Truncation produces incomplete JSON that then fails to parse below — surface the real cause (the
-  // length limit) with an actionable message instead of a generic "could not parse". The caller's
-  // maxTokens budget is too small for this response; raising it is the fix.
-  if (data.stop_reason === 'max_tokens') {
-    return res
-      .status(502)
-      .json({ error: 'The analysis was cut off before it finished (hit the length limit). Please try again.' })
-  }
-  const textBlock = (data.content || []).find((c) => c.type === 'text')
-  if (!textBlock?.text) return res.status(502).json({ error: 'Empty analysis response.' })
-
-  let parsed: unknown
-  try {
-    parsed = JSON.parse(textBlock.text)
-  } catch {
-    return res.status(502).json({ error: 'Could not parse the analysis response.' })
-  }
+  const data = (await upstream.json()) as AnthropicMessage
+  const fin = finalizeChatData(data)
+  if ('error' in fin) return res.status(fin.status).json({ error: fin.error })
   if (data.usage) console.log('[llm] chat usage', b.model, JSON.stringify(data.usage))
-  res.json({ parsed, raw: data })
+  res.json({ parsed: fin.parsed, raw: data })
+})
+
+// Write one Server-Sent Event frame.
+function sse(res: { write(chunk: string): boolean }, event: string, data: unknown) {
+  res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`)
+}
+
+interface AnthropicStreamEvent {
+  type?: string
+  content_block?: { type?: string }
+  delta?: { type?: string; text?: string; stop_reason?: string }
+  usage?: unknown
+  error?: { message?: string }
+}
+
+// POST /api/llm/chat/stream → Server-Sent Events: `phase` (thinking|writing), `text` (JSON deltas),
+// `done` ({ parsed, raw }), `error` ({ message }). Same request body and failure semantics as /chat;
+// callers that don't need progressive output keep using /chat. Pre-stream failures (bad provider, no
+// key, upstream non-ok) are still returned as ordinary JSON — we only switch to SSE once bytes flow.
+llm.post('/chat/stream', async (req, res) => {
+  const apiKey = resolveKeyOrReject(req, res)
+  if (!apiKey) return
+  const b = req.body as ChatBody
+
+  let upstream: Response
+  try {
+    upstream = await postAnthropicWithRetry({ ...buildChatRequest(b), stream: true }, apiKey)
+  } catch {
+    return res.status(502).json({ error: 'Network error reaching Anthropic.' })
+  }
+  if (!upstream.ok) {
+    return res.status(upstream.status).json({ error: upstreamErrorMessage(upstream.status, await upstreamErrorDetail(upstream)) })
+  }
+  const reader = upstream.body?.getReader()
+  if (!reader) return res.status(502).json({ error: 'Empty analysis response.' })
+
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache, no-transform')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders?.()
+
+  // Cancel the upstream read if the browser disconnects (e.g. the user hit "Start over").
+  let aborted = false
+  req.on('close', () => {
+    aborted = true
+    reader.cancel().catch(() => {})
+  })
+
+  const decoder = new TextDecoder()
+  let buf = ''
+  let jsonText = ''
+  let phase: 'thinking' | 'writing' | null = null
+  let stopReason: string | undefined
+  let usage: unknown
+
+  const handleBlock = (block: string) => {
+    const dataLine = block.split('\n').find((l) => l.startsWith('data:'))
+    if (!dataLine) return
+    let evt: AnthropicStreamEvent
+    try {
+      evt = JSON.parse(dataLine.slice(5).trim())
+    } catch {
+      return
+    }
+    switch (evt.type) {
+      case 'content_block_start': {
+        const p = evt.content_block?.type === 'text' ? 'writing' : 'thinking'
+        if (p !== phase) {
+          phase = p
+          sse(res, 'phase', { phase: p })
+        }
+        break
+      }
+      case 'content_block_delta': {
+        if (evt.delta?.type === 'text_delta' && typeof evt.delta.text === 'string') {
+          jsonText += evt.delta.text
+          sse(res, 'text', { text: evt.delta.text })
+        }
+        break
+      }
+      case 'message_delta': {
+        if (evt.delta?.stop_reason) stopReason = evt.delta.stop_reason
+        if (evt.usage) usage = evt.usage
+        break
+      }
+      case 'error':
+        sse(res, 'error', { message: evt.error?.message || 'Analysis stream failed.' })
+        break
+    }
+  }
+
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buf += decoder.decode(value, { stream: true })
+      let idx: number
+      while ((idx = buf.indexOf('\n\n')) !== -1) {
+        handleBlock(buf.slice(0, idx))
+        buf = buf.slice(idx + 2)
+      }
+    }
+  } catch {
+    if (!aborted) sse(res, 'error', { message: 'Analysis stream interrupted.' })
+    return res.end()
+  }
+  if (aborted) return res.end()
+
+  const data: AnthropicMessage = { content: [{ type: 'text', text: jsonText }], stop_reason: stopReason, usage }
+  const fin = finalizeChatData(data)
+  if ('error' in fin) {
+    sse(res, 'error', { message: fin.error })
+    return res.end()
+  }
+  if (usage) console.log('[llm] chat(stream) usage', b.model, JSON.stringify(usage))
+  sse(res, 'done', { parsed: fin.parsed, raw: data })
+  res.end()
 })
 
 interface WhisperWord {

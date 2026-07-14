@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { resumeToMarkdown } from '../../lib/resume/generate'
 import { analyzeResumeFit } from '../../lib/resume/fit'
 import { listStories } from '../../lib/storyStore'
-import type { GeneratedResume, ParsedJob, ResumeBullet } from '../../types'
+import type { GeneratedResume, ParsedJob, ResumeBullet, ResumeStyle } from '../../types'
 import type { Project } from '../../data/projects'
 import type { Story } from '../../data/stories'
 
@@ -16,6 +16,7 @@ export default function GeneratedResumeView({
   baselineFitScore,
   stories,
   projects,
+  style,
 }: {
   resume: GeneratedResume
   job: ParsedJob | null
@@ -23,12 +24,15 @@ export default function GeneratedResumeView({
   baselineFitScore: number | null
   stories: Story[]
   projects: Project[]
+  /** Style inferred from the candidate's uploaded resume, so the PDF export mirrors their look. */
+  style?: ResumeStyle | null
 }) {
   const [scoring, setScoring] = useState(false)
   const [draftScore, setDraftScore] = useState<number | null>(null)
   const [scoreError, setScoreError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [exporting, setExporting] = useState(false)
+  const [exportingDocx, setExportingDocx] = useState(false)
 
   // Lookups so a bullet's source id resolves to a human label for its chip.
   const storyTitle = useMemo(() => new Map(stories.map((s) => [s.id, s.title || 'Untitled story'])), [stories])
@@ -70,11 +74,27 @@ export default function GeneratedResumeView({
     setScoreError(null)
     try {
       const { downloadResumePdf } = await import('../../lib/resume/pdf')
-      await downloadResumePdf(resume)
+      await downloadResumePdf(resume, style)
     } catch (e) {
       setScoreError(e instanceof Error ? e.message : 'Could not export the PDF.')
     } finally {
       setExporting(false)
+    }
+  }
+
+  // Word (.docx) download in the standard ATS one-page format — the candidate converts to PDF from
+  // Google Drive. Lazy-loaded like the PDF path.
+  async function exportDocx() {
+    if (exportingDocx) return
+    setExportingDocx(true)
+    setScoreError(null)
+    try {
+      const { downloadResumeDocx } = await import('../../lib/resume/docx')
+      await downloadResumeDocx(resume)
+    } catch (e) {
+      setScoreError(e instanceof Error ? e.message : 'Could not export the Word file.')
+    } finally {
+      setExportingDocx(false)
     }
   }
 
@@ -104,6 +124,14 @@ export default function GeneratedResumeView({
             className="rounded-md border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-50"
           >
             {copied ? 'Copied!' : 'Copy markdown'}
+          </button>
+          <button
+            type="button"
+            onClick={() => void exportDocx()}
+            disabled={exportingDocx}
+            className="rounded-md bg-terracotta-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-terracotta-500 disabled:opacity-50"
+          >
+            {exportingDocx ? 'Exporting…' : 'Download Word'}
           </button>
           <button
             type="button"
@@ -140,7 +168,7 @@ export default function GeneratedResumeView({
 
       {/* Skills */}
       {resume.skills.length > 0 && (
-        <div>
+        <div className="border-t border-stone-200 pt-4">
           <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Skills</p>
           <ul className="mt-1 space-y-0.5 text-sm text-stone-700">
             {resume.skills.map((s, i) => (
@@ -151,18 +179,25 @@ export default function GeneratedResumeView({
       )}
 
       {/* Experience with provenance */}
-      {resume.experience.map((exp, i) => (
-        <div key={i}>
-          <p className="text-sm font-semibold text-stone-800">
-            {exp.role} — {exp.company}{exp.dates ? <span className="font-normal text-stone-400"> · {exp.dates}</span> : null}
-          </p>
-          <ul className="mt-1.5 space-y-1.5">
-            {exp.bullets.map((b, j) => (
-              <BulletRow key={j} bullet={b} storyTitle={storyTitle} projectTitle={projectTitle} />
+      {resume.experience.length > 0 && (
+        <div className="border-t border-stone-200 pt-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Experience</p>
+          <div className="mt-2 space-y-3">
+            {resume.experience.map((exp, i) => (
+              <div key={i}>
+                <p className="text-sm font-semibold text-stone-800">
+                  {exp.role} — {exp.company}{exp.dates ? <span className="font-normal text-stone-400"> · {exp.dates}</span> : null}
+                </p>
+                <ul className="mt-1.5 space-y-1.5">
+                  {exp.bullets.map((b, j) => (
+                    <BulletRow key={j} bullet={b} storyTitle={storyTitle} projectTitle={projectTitle} />
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         </div>
-      ))}
+      )}
     </div>
   )
 }

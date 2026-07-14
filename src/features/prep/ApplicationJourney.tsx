@@ -109,6 +109,7 @@ export default function ApplicationJourney() {
             job={job}
             profile={profile}
             baselineFitScore={app.fit?.score ?? null}
+            fit={app.fit?.result ?? null}
             unlocked={fitUnlocked}
             applied={app.status !== 'not_applied'}
             onApplied={() => updateApp({ ...app, status: app.status === 'not_applied' ? 'applied' : app.status })}

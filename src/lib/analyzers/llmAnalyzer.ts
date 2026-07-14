@@ -1,4 +1,4 @@
-import { chatStructured } from '../llmClient'
+import { chatStructured, chatStructuredStream } from '../llmClient'
 import { DEFAULT_CRITERIA, type Criteria } from '../../data/criteria'
 import type { Story } from '../../data/stories'
 import { FACETS, facetText, type Project } from '../../data/projects'
@@ -119,15 +119,34 @@ export function makeLlmAnalyzer(criteria: Criteria = DEFAULT_CRITERIA) {
         job: ctx.job,
       })
 
-      const { parsed, raw } = await chatStructured<StarGrading>({
-        provider: 'anthropic',
+      const request = {
+        provider: 'anthropic' as const,
         model: criteria.model,
         system: criteria.systemPrompt,
         user,
         schema: criteria.schema,
         maxTokens: criteria.maxTokens,
         signal: ctx.signal,
-      })
+      }
+
+      // Stream when the caller wants progress (behavioral grading), so the UI can fill in scores and
+      // beats as they arrive; otherwise take the plain blocking path. If streaming fails where the
+      // blocking call would succeed (e.g. a proxy that buffers SSE, or a mid-stream drop), degrade to
+      // blocking rather than failing the grade — an abort still propagates.
+      async function runGrade() {
+        if (!ctx.onGradeProgress) return chatStructured<StarGrading>(request)
+        try {
+          return await chatStructuredStream<StarGrading>(request, (ev) => {
+            if (ev.type === 'phase') ctx.onGradeProgress!({ phase: ev.phase })
+            else ctx.onGradeProgress!({ partial: ev.value })
+          })
+        } catch (e) {
+          if ((e as Error)?.name === 'AbortError') throw e
+          console.warn('[grade] streaming failed, falling back to blocking call:', (e as Error)?.message)
+          return chatStructured<StarGrading>(request)
+        }
+      }
+      const { parsed, raw } = await runGrade()
 
       return {
         id: criteria.id,
