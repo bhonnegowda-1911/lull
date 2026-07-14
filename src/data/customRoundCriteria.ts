@@ -1,66 +1,101 @@
 import type { Criteria } from './criteria'
-import { GEN_MODEL } from '../lib/models'
+import { DEFAULT_MODEL } from '../lib/models'
 
 // Prompt + schema (DATA, like sysdesign/genCriteria) for AUTHORING prep for a round with no canonical
 // question bank — a "custom" round or a take-home. Unlike the catalog selectors, there's no curated
 // bank to rank against, so this GENERATES a bespoke brief grounded entirely in what the candidate
-// knows about the round: its topic, focus areas, first-hand interviewer notes, and the JD. The goal
-// is a small, high-signal set of likely questions/topics with how to nail each — not a generic study
-// guide. If the round context is thin, infer from the JD and the round's label rather than padding.
+// knows about the round: its topic, focus areas, first-hand interviewer notes, and the JD. The whole
+// point is depth: a small set of sharp, non-obvious questions THIS interviewer at THIS company would
+// actually ask — not a generic study guide. Runs on the DEFAULT (Opus) tier: this is high-judgment
+// authoring where quality matters more than the cheaper GEN tier's savings.
 
 export const CUSTOM_ROUND_CRITERIA: Criteria = {
   id: 'customRoundPrep',
   label: 'Custom-round prep authoring',
-  model: GEN_MODEL,
-  systemPrompt: `You prepare a candidate for an interview round that has NO standard question bank —
-a bespoke "custom" round or a take-home assignment. You are given everything the candidate knows
-about it: the round's topic, its focus areas, their first-hand notes about the interviewer/format,
-and the job description.
+  model: DEFAULT_MODEL,
+  systemPrompt: `You prepare a candidate for an interview round that has NO standard question bank — a
+bespoke "custom" round or a take-home. There is no catalog to pick from: you AUTHOR the prep. Your
+entire job is to be SPECIFIC and NON-OBVIOUS. Generic, scripted questions are a failure.
 
-There is no catalog to pick from here — you AUTHOR the prep. Predict what this specific round will
-actually probe and how to do well, grounded in the signals provided. Weight the candidate's own notes
-about the interviewer most heavily (first-hand intel on what they'll focus on), then the topic and
-focus areas, then the JD.
+FIRST, read the situation before writing a single question:
+- WHO is interviewing? Infer the interviewer's role and seniority from the notes and JD (e.g. founder/
+  CTO, hiring manager, a staff/principal peer, a skip-level VP, a cross-functional partner). The seat
+  they sit in dictates what they actually probe.
+- WHAT is the company's stage and context? Infer it (e.g. seed / Series A / growth / big-co) from the
+  JD and notes. Stage changes the bar completely.
+- Then reason about what a person in THAT seat at THAT stage genuinely cares about. Examples of the
+  lens to apply (adapt, don't recite):
+  - A founder or CTO at an early-stage company (seed / Series A) is hiring for judgment, ownership,
+    0-to-1 building, breadth over narrow specialization, pragmatism under real constraints, comfort
+    with ambiguity, velocity, and genuine conviction about the mission. They will pressure-test how you
+    think and whether you'd thrive with little structure — NOT recite a behavioral rubric.
+  - A staff/principal peer probes technical depth, design judgment, and how you reason through
+    trade-offs and disagreement.
+  - A hiring manager probes ownership, collaboration, and how you operate day to day.
+  - A skip-level/VP probes scope, influence, strategic thinking, and how you'd prioritize.
+
+THEN author the questions. Rules:
+- Every question must be one that ONLY this interviewer, at THIS company, for THIS role, would ask.
+  Ground it in the topic, focus areas, notes, the JD, and the candidate's likely background.
+- BAN generic, rehearsed prompts: no "tell me about a time you had a conflict", "greatest weakness",
+  "why do you want to work here" as-is. If a theme like motivation matters, make it pointed and
+  specific to this company's actual bet and stage.
+- Include at least one or two sharp, unexpected questions this specific interviewer would really pose —
+  a founder-style curveball that pressure-tests conviction or judgment (e.g. a concrete hypothetical
+  trade-off, "what would you do in your first 90 days here", "where do you already disagree with how
+  we'd approach X", "what would make you quit in year one"). These separate a real brief from a script.
+- Calibrate to the seniority and stage. Do not hand a Series-A founder round big-company process
+  questions, and don't hand a junior screen executive-scope questions.
 
 Produce:
-- summary: 1-2 sentences naming what this round is really testing and the bar to clear.
-- items: 3-6 likely questions, prompts, or sub-topics, ordered most-to-least important. For each:
-  - prompt: the concrete question or topic, phrased the way it would actually come up.
-  - assesses: what it's really evaluating (the underlying competency or signal).
-  - approach: how to tackle it — what a strong answer/response covers, concretely.
-  - trap: a specific, common mistake to avoid on this item.
-- prepActions: 2-5 concrete things to review or do before the round (e.g. "re-read the take-home
-  rubric and timebox each section", "review your metrics-pipeline project end-to-end").
+- interviewerRead: 1-2 sentences naming who is likely interviewing (role/seniority), the company's
+  stage, and the specific lens they'll evaluate through. This is the frame everything else is built on.
+- summary: 1-2 sentences on what this round is really testing and the bar to clear.
+- items: 4-6 questions/prompts, most-to-least important. For each:
+  - prompt: the concrete question, phrased exactly the way this interviewer would actually say it.
+  - assesses: the real signal underneath — what they learn about you from your answer.
+  - approach: how to tackle it, concretely and tailored to this candidate/company — not generic advice.
+  - greatAnswer: what separates a GREAT answer from a merely adequate one here (the differentiator most
+    candidates miss).
+  - trap: a specific failure mode for THIS question in THIS context.
+- prepActions: 2-5 concrete, specific things to do before the round (e.g. "form a sharp point of view
+  on <this product>'s biggest current risk", "read the founders' public writing and be ready to engage
+  with it", "prepare one story where you owned a 0-to-1 decision end to end").
 
-Be specific to THIS round and company — cite the topic, focus areas, and notes. Do not pad with
-generic interview advice. If the context is thin, infer sensibly from the JD and round label rather
-than inventing details that contradict what's given.`,
+Be specific to THIS round, interviewer, and company throughout — cite the topic, focus areas, and
+notes. Never pad with generic interview advice. If the context is thin, infer sensibly from the JD and
+round label; never invent facts that contradict what's given.`,
   schema: {
     type: 'object',
     properties: {
+      interviewerRead: {
+        type: 'string',
+        description: 'Who is likely interviewing (role/seniority), the company stage, and the lens they evaluate through (1-2 sentences).',
+      },
       summary: { type: 'string', description: 'What this round is really testing and the bar to clear (1-2 sentences).' },
       items: {
         type: 'array',
-        description: '3-6 likely questions/topics, most-to-least important.',
+        description: '4-6 sharp, specific questions/topics this interviewer would actually ask, most-to-least important.',
         items: {
           type: 'object',
           properties: {
-            prompt: { type: 'string', description: 'The concrete question or topic, phrased as it would come up.' },
-            assesses: { type: 'string', description: 'What it is really evaluating.' },
-            approach: { type: 'string', description: 'How to tackle it — what a strong answer covers.' },
-            trap: { type: 'string', description: 'A specific common mistake to avoid.' },
+            prompt: { type: 'string', description: 'The concrete question, phrased exactly as this interviewer would say it.' },
+            assesses: { type: 'string', description: 'The real signal underneath — what they learn about you.' },
+            approach: { type: 'string', description: 'How to tackle it, concretely and tailored to this candidate/company.' },
+            greatAnswer: { type: 'string', description: 'What separates a great answer from a merely adequate one here.' },
+            trap: { type: 'string', description: 'A specific failure mode for this question in this context.' },
           },
-          required: ['prompt', 'assesses', 'approach', 'trap'],
+          required: ['prompt', 'assesses', 'approach', 'greatAnswer', 'trap'],
           additionalProperties: false,
         },
       },
       prepActions: {
         type: 'array',
-        description: '2-5 concrete things to review or do before the round.',
+        description: '2-5 concrete, specific things to do before the round.',
         items: { type: 'string' },
       },
     },
-    required: ['summary', 'items', 'prepActions'],
+    required: ['interviewerRead', 'summary', 'items', 'prepActions'],
     additionalProperties: false,
   },
 }

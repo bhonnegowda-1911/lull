@@ -18,23 +18,11 @@ import type { Application, JobDescription, RoundType, StageOutcome } from '../ty
 
 // A deterministic stand-in for the LLM call: returns a two-day plan whose tasks reference interview
 // numbers 1 and 2 (plus a general rest task), so we can assert dayIndex→date mapping and attribution.
-vi.mock('../lib/llmClient', () => ({
-  chatStructured: vi.fn(async () => ({
-    parsed: {
-      days: [
-        { dayIndex: 1, focus: 'Kickoff', tasks: [{ interview: 1, round: 'recruiter', text: 'Acme task' }] },
-        {
-          dayIndex: 2,
-          focus: 'Design',
-          tasks: [
-            { interview: 2, round: 'system_design', text: 'Globex task' },
-            { interview: null, round: 'rest', text: 'Rest up' },
-          ],
-        },
-      ],
-    },
-  })),
-}))
+// The plan is built deterministically from saved picks; stub the banks so pick IDs resolve to
+// predictable titles/labels without depending on the real question banks.
+vi.mock('../data/prompts', () => ({ getPrompt: (id: string) => ({ label: `Prompt ${id}` }) }))
+vi.mock('../data/sysdesign/problems', () => ({ getProblem: (id: string) => ({ title: `SysDesign ${id}` }) }))
+vi.mock('../data/coding/problems', () => ({ getProblem: (id: string) => ({ title: `Coding ${id}` }) }))
 
 describe('schedule date helpers', () => {
   it('adds days across month boundaries', () => {
@@ -227,16 +215,25 @@ describe('upcomingRounds', () => {
 })
 
 describe('activeInterviews', () => {
+  const today = '2026-06-23'
+
   it('takes each in-flight job\'s scheduled active round, soonest first', () => {
     const a = jobWith({ id: 'a', company: 'Acme', scheduledAt: '2026-06-28' })
     const b = jobWith({ id: 'b', company: 'Globex', scheduledAt: '2026-06-25' })
-    expect(activeInterviews([a, b]).map((i) => i.company)).toEqual(['Globex', 'Acme'])
+    expect(activeInterviews([a, b], today).map((i) => i.company)).toEqual(['Globex', 'Acme'])
   })
 
   it('excludes undated rounds and terminal applications', () => {
     const undated = jobWith({ id: 'a', scheduledAt: null })
     const rejected = jobWith({ id: 'b', scheduledAt: '2026-06-25', status: 'rejected' })
-    expect(activeInterviews([undated, rejected])).toEqual([])
+    expect(activeInterviews([undated, rejected], today)).toEqual([])
+  })
+
+  it('excludes interviews whose date is already in the past (keeps today)', () => {
+    const past = jobWith({ id: 'a', company: 'Acme', scheduledAt: '2026-06-20' })
+    const onToday = jobWith({ id: 'b', company: 'Globex', scheduledAt: today })
+    const future = jobWith({ id: 'c', company: 'Initech', scheduledAt: '2026-06-28' })
+    expect(activeInterviews([past, onToday, future], today).map((i) => i.company)).toEqual(['Globex', 'Initech'])
   })
 
   it('contributes every dated interview of a bundled onsite session', () => {
@@ -253,50 +250,103 @@ describe('activeInterviews', () => {
         fit: null, decisionNote: '',
       },
     }
-    expect(activeInterviews([onsite]).map((i) => i.round.type)).toEqual(['technical_screen', 'system_design', 'hiring_manager'])
+    expect(activeInterviews([onsite], today).map((i) => i.round.type)).toEqual(['technical_screen', 'system_design', 'hiring_manager'])
   })
 })
 
 describe('prepInputSignature', () => {
+  const today = '2026-06-23'
+
   it('is stable across edits that do not affect prep inputs (e.g. company name)', () => {
     const a = jobWith({ id: 'a', company: 'Acme', scheduledAt: '2026-06-28' })
     const renamed = { ...a, company: 'Acme Corp', title: 'Acme Corp role' }
-    expect(prepInputSignature([renamed])).toBe(prepInputSignature([a]))
+    expect(prepInputSignature([renamed], today)).toBe(prepInputSignature([a], today))
   })
 
   it('changes when a round date, outcome, or focus areas change', () => {
     const base = jobWith({ id: 'a', scheduledAt: '2026-06-28' })
-    const sig = prepInputSignature([base])
-    expect(prepInputSignature([jobWith({ id: 'a', scheduledAt: '2026-06-29' })])).not.toBe(sig)
-    expect(prepInputSignature([jobWith({ id: 'a', scheduledAt: '2026-06-28', outcome: 'pending' })])).not.toBe(sig)
-    expect(prepInputSignature([jobWith({ id: 'a', scheduledAt: '2026-06-28', focusAreas: ['sharding'] })])).not.toBe(sig)
+    const sig = prepInputSignature([base], today)
+    expect(prepInputSignature([jobWith({ id: 'a', scheduledAt: '2026-06-29' })], today)).not.toBe(sig)
+    expect(prepInputSignature([jobWith({ id: 'a', scheduledAt: '2026-06-28', outcome: 'pending' })], today)).not.toBe(sig)
+    expect(prepInputSignature([jobWith({ id: 'a', scheduledAt: '2026-06-28', focusAreas: ['sharding'] })], today)).not.toBe(sig)
   })
 
   it('changes when an interview is added or removed', () => {
     const a = jobWith({ id: 'a', scheduledAt: '2026-06-28' })
     const b = jobWith({ id: 'b', company: 'Globex', scheduledAt: '2026-06-25' })
-    expect(prepInputSignature([a, b])).not.toBe(prepInputSignature([a]))
+    expect(prepInputSignature([a, b], today)).not.toBe(prepInputSignature([a], today))
+  })
+
+  it('drops an interview once its date has passed, so a since-completed plan reads as stale', () => {
+    const a = jobWith({ id: 'a', scheduledAt: '2026-06-28' })
+    const before = prepInputSignature([a], '2026-06-23')
+    const after = prepInputSignature([a], '2026-06-29')
+    expect(after).not.toBe(before)
   })
 })
 
 describe('generateGlobalPrepPlan', () => {
-  it('maps dayIndex forward from today, attributes tasks to interviews, and stamps the signature', async () => {
+  const pick = (problemId: string) => ({ problemId, confidence: 'high' as const, rationale: 'r' })
+  const prompt = (promptId: string) => ({ promptId, confidence: 'high' as const, rationale: 'r' })
+
+  it('spreads an interview\'s saved questions across its run-up, front-loaded, closing with a timed mock', async () => {
     const today = toISODate()
-    const acme = jobWith({ id: 'a', company: 'Acme', type: 'recruiter', scheduledAt: addDays(today, 1) })
-    const globex = jobWith({ id: 'b', company: 'Globex', type: 'system_design', scheduledAt: addDays(today, 2) })
-    const jobs = [acme, globex]
+    const acme = jobWith({ id: 'a', company: 'Acme', type: 'technical_screen', scheduledAt: addDays(today, 3) })
+    acme.codingPicks = [pick('c1'), pick('c2'), pick('c3')]
 
-    const plan = await generateGlobalPrepPlan(jobs)
+    const plan = await generateGlobalPrepPlan([acme])
 
-    // dayIndex 1 = today, counting forward.
-    expect(plan.days.map((d) => d.date)).toEqual([today, addDays(today, 1)])
-    // interview number → company attribution (sorted soonest-first: 1 = Acme, 2 = Globex).
-    expect(plan.days[0].tasks[0].company).toBe('Acme')
-    expect(plan.days[1].tasks[0].company).toBe('Globex')
-    // A general (interview=null) task carries no company attribution.
-    expect(plan.days[1].tasks[1].company).toBeUndefined()
+    // dayIndex 1 = today, out to the interview day (4 days).
+    expect(plan.days.map((d) => d.date)).toEqual([today, addDays(today, 1), addDays(today, 2), addDays(today, 3)])
+    // The saved picks become tasks verbatim (with time-boxes), one per run-up day, in order.
+    expect(plan.days[0].tasks[0]).toMatchObject({ text: 'Solve: Coding c1', minutes: 30, company: 'Acme', roundLabel: 'Technical screen', done: false })
+    expect(plan.days[1].tasks[0].text).toBe('Solve: Coding c2')
+    expect(plan.days[2].tasks[0].text).toBe('Solve: Coding c3')
+    // The interview day itself is reserved for the timed mock.
+    expect(plan.days[3].tasks[0]).toMatchObject({ text: 'Full timed mock: Technical screen', minutes: 45 })
     // The plan records the signature it was built from, so the UI can detect staleness.
-    expect(plan.signature).toBe(prepInputSignature(jobs))
+    expect(plan.signature).toBe(prepInputSignature([acme]))
+  })
+
+  it('deep-links each task to the page where it is practiced', async () => {
+    const today = toISODate()
+    const coding = jobWith({ id: 'a', type: 'technical_screen', scheduledAt: addDays(today, 2) })
+    coding.codingPicks = [pick('c1')]
+    const recruiter = jobWith({ id: 'b', type: 'recruiter', scheduledAt: addDays(today, 2) })
+    recruiter.recruiterPicks = [prompt('r1')]
+
+    const tasks = (await generateGlobalPrepPlan([coding, recruiter])).days.flatMap((d) => d.tasks)
+    const codingSolve = tasks.find((t) => t.text === 'Solve: Coding c1')
+    const recruiterRehearse = tasks.find((t) => t.text.startsWith('Rehearse:'))
+
+    expect(codingSolve?.link).toEqual({ to: '/practice/coding', state: { startProblemId: 'c1' } })
+    expect(recruiterRehearse?.link).toEqual({ to: '/practice/behavioral', state: { startPromptId: 'r1', jobId: 'b', persona: 'recruiter' } })
+    // The timed mock links to its practice mode too.
+    expect(tasks.find((t) => t.text === 'Full timed mock: Technical screen')?.link).toEqual({ to: '/practice/coding' })
+  })
+
+  it('interleaves parallel interviews and attributes every task to its company', async () => {
+    const today = toISODate()
+    const acme = jobWith({ id: 'a', company: 'Acme', type: 'system_design', scheduledAt: addDays(today, 2) })
+    acme.problemPicks = [pick('p1')]
+    const globex = jobWith({ id: 'b', company: 'Globex', type: 'behavioral', scheduledAt: addDays(today, 2) })
+    globex.behavioralPicks = [prompt('b1')]
+
+    const plan = await generateGlobalPrepPlan([acme, globex])
+    const companies = plan.days.flatMap((d) => d.tasks.map((t) => t.company))
+    expect(new Set(companies)).toEqual(new Set(['Acme', 'Globex']))
+    // Every task is attributed — no orphan tasks.
+    expect(plan.days.flatMap((d) => d.tasks).every((t) => !!t.company)).toBe(true)
+  })
+
+  it('falls back to one grounding review task when a round has no saved picks', async () => {
+    const today = toISODate()
+    const job = jobWith({ id: 'a', company: 'Acme', type: 'take_home', scheduledAt: addDays(today, 1), topic: 'Design doc' })
+
+    const plan = await generateGlobalPrepPlan([job])
+    const tasks = plan.days.flatMap((d) => d.tasks)
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0]).toMatchObject({ text: 'Review Take-home assignment: Design doc', minutes: 30, company: 'Acme' })
   })
 
   it('returns an empty plan when nothing is scheduled', async () => {

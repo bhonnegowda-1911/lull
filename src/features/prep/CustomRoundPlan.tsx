@@ -120,6 +120,11 @@ export default function CustomRoundPlan({ job, round, onSave }: Props) {
 
       {prep && (
         <div className="mt-3 space-y-3">
+          {prep.interviewerRead && (
+            <p className="rounded-md border border-terracotta-100 bg-terracotta-50/60 px-3 py-2 text-xs text-stone-700">
+              <span className="font-semibold text-terracotta-700">Who you’re talking to:</span> {prep.interviewerRead}
+            </p>
+          )}
           <p className="rounded-md bg-stone-50 px-3 py-2 text-xs text-stone-600">
             <span className="font-semibold text-stone-700">What this tests:</span> {prep.summary}
           </p>
@@ -142,6 +147,7 @@ export default function CustomRoundPlan({ job, round, onSave }: Props) {
                   <div className="mt-2 space-y-1 border-t border-stone-100 pt-2 text-xs text-stone-600">
                     <p><span className="font-semibold text-stone-700">Assesses:</span> {item.assesses}</p>
                     <p><span className="font-semibold text-stone-700">Approach:</span> {item.approach}</p>
+                    {item.greatAnswer && <p><span className="font-semibold text-emerald-700">What makes it great:</span> {item.greatAnswer}</p>}
                     <p><span className="font-semibold text-red-600">Trap:</span> {item.trap}</p>
                   </div>
                 )}

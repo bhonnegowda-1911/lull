@@ -13,14 +13,19 @@ function roundContext(round: InterviewRoundInstance, job: JobDescription): strin
   const jobLines = p
     ? [`Title: ${p.title}`, `Company: ${p.company}`, `Seniority: ${p.seniority}`, `Responsibilities: ${p.responsibilities.join(' | ')}`]
     : [`Title: ${job.title}`, `Company: ${job.company}`]
+  // The candidate's own notes are the sharpest signal — who's interviewing, format, what to expect.
+  // Lead with them (when present) so the interviewer/stage read is anchored on first-hand intel.
   const notes = round.notes?.trim()
-    ? `\n\nCANDIDATE'S FIRST-HAND NOTES ABOUT THIS INTERVIEWER / ROUND (weight this most — it's the sharpest signal of what they'll actually focus on):\n${round.notes.trim()}`
-    : ''
+    ? `INTERVIEWER / ROUND INTEL — the candidate's first-hand notes (WEIGHT THIS MOST; it's the truest signal of who's interviewing and what they'll actually probe):\n${round.notes.trim()}\n`
+    : `INTERVIEWER / ROUND INTEL: (none given — infer the likely interviewer and company stage from the round label and the JD below)\n`
   return [
+    'Author prep for this round. First infer WHO is interviewing (role/seniority) and the company\'s',
+    'STAGE from the intel and JD, then build the questions around that read.',
+    '',
+    notes,
     `ROUND: ${round.label} (${roundCatalog(round.type).label})`,
     `ABOUT THIS ROUND: ${round.topic?.trim() || '(not specified)'}`,
     `FOCUS AREAS: ${focusAreas.length ? focusAreas.join(', ') : '(not specified)'}`,
-    notes,
     `\nPARSED JOB STRUCTURE:\n${jobLines.join('\n')}`,
     `\nRAW JOB DESCRIPTION:\n${job.rawText.trim()}`,
   ].join('\n')

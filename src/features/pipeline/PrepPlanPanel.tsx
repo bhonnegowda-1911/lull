@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
-import { ListChecks, CalendarPlus, RefreshCw, Sparkles } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { ListChecks, CalendarPlus, RefreshCw, Sparkles, Clock, ChevronRight } from 'lucide-react'
 import { roundLabel } from '../../data/rounds'
 import { daysBetween, relativeDay, toISODate } from '../../lib/application/schedule'
 import { activeInterviews, generateGlobalPrepPlan, prepInputSignature } from '../../lib/application/globalPrepPlan'
@@ -7,12 +8,27 @@ import { getPrepPlan, savePrepPlan } from '../../lib/prepPlanStore'
 import Pending from '../../components/Pending'
 import type { GlobalPrepPlan, GlobalPrepTask, JobDescription } from '../../types'
 
-// The single, cross-application prep plan: one dated schedule merged from every active interview.
-// Generated on demand (one LLM call), persisted server-side, and marked stale via an input signature
-// when the active interviews change — so the user rebuilds with one click rather than authoring a plan
-// per application. Replaces the old per-round-plan merge that used to live in PipelineHome.
+// The single, cross-application prep plan: one dated schedule laid out from every active interview's
+// saved question picks. Built deterministically on demand, persisted server-side, and marked stale via
+// an input signature when the active interviews or their picks change — so the user rebuilds with one
+// click. Each task deep-links into the page where it's practiced. Replaces the old per-round-plan merge.
 
 const OVERLOAD_THRESHOLD = 4
+
+/** Split a 'YYYY-MM-DD' date into the pieces the day chip shows: weekday abbrev + day-of-month. */
+function dayParts(iso: string): { weekday: string; dayNum: number } {
+  const [y, m, d] = iso.split('-').map(Number)
+  const dt = new Date(y, m - 1, d)
+  return { weekday: dt.toLocaleDateString(undefined, { weekday: 'short' }), dayNum: d }
+}
+
+/** Compact time-box label, e.g. 45 → "45m", 90 → "1h 30m", 120 → "2h". */
+function formatMinutes(min: number): string {
+  if (min < 60) return `${min}m`
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  return m ? `${h}h ${m}m` : `${h}h`
+}
 
 function taskTag(t: GlobalPrepTask): { label: string; cls: string } {
   if (t.company) return { label: t.company, cls: 'bg-terracotta-100 text-terracotta-700' }
@@ -34,14 +50,15 @@ interface Props {
 }
 
 export default function PrepPlanPanel({ jobs, onPlanChange }: Props) {
+  const navigate = useNavigate()
   const [plan, setPlan] = useState<GlobalPrepPlan | null>(null)
   const [loading, setLoading] = useState(true)
   const [building, setBuilding] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const today = toISODate()
-  const interviews = useMemo(() => activeInterviews(jobs), [jobs])
-  const signature = useMemo(() => prepInputSignature(jobs), [jobs])
+  const interviews = useMemo(() => activeInterviews(jobs, today), [jobs, today])
+  const signature = useMemo(() => prepInputSignature(jobs, today), [jobs, today])
 
   function publish(next: GlobalPrepPlan | null) {
     setPlan(next)
@@ -68,7 +85,7 @@ export default function PrepPlanPanel({ jobs, onPlanChange }: Props) {
       await savePrepPlan(built)
       publish(built)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not build the plan — is the backend running and an LLM key set?')
+      setError(e instanceof Error ? e.message : 'Could not save the plan — is the backend running?')
     } finally {
       setBuilding(false)
     }
@@ -98,7 +115,7 @@ export default function PrepPlanPanel({ jobs, onPlanChange }: Props) {
           <h3 className="flex items-center gap-1.5 text-sm font-semibold text-stone-900">
             <ListChecks size={15} className="text-terracotta-500" aria-hidden /> Prep plan
           </h3>
-          <p className="text-xs text-stone-500">One schedule across every active interview. Heavy days are flagged so parallel loops stay balanced.</p>
+          <p className="text-xs text-stone-500">Your saved practice questions from every active interview, laid out day by day up to each date.</p>
         </div>
         {!empty && (
           <button
@@ -113,7 +130,7 @@ export default function PrepPlanPanel({ jobs, onPlanChange }: Props) {
         )}
       </div>
 
-      {building && <Pending label="Building one plan across your interviews…" />}
+      {building && <Pending label="Laying out your saved questions across every interview…" />}
       {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       {stale && !building && (
         <p className="mt-2 rounded-md bg-amber-50 px-3 py-2 text-xs text-amber-700">
@@ -134,25 +151,69 @@ export default function PrepPlanPanel({ jobs, onPlanChange }: Props) {
           {plan ? 'No upcoming days in this plan — regenerate for your current interviews.' : `${interviews.length} interview${interviews.length === 1 ? '' : 's'} scheduled. Generate a plan to get a day-by-day run-up.`}
         </p>
       ) : (
-        <ol className="mt-3 space-y-2">
+        <ol className="mt-4 space-y-3">
           {days.map((day, di) => {
-            const overloaded = day.tasks.length >= OVERLOAD_THRESHOLD
+            const total = day.tasks.length
+            const done = day.tasks.filter((t) => t.done).length
+            const complete = total > 0 && done === total
+            const overloaded = total >= OVERLOAD_THRESHOLD
+            const dayMinutes = day.tasks.reduce((sum, t) => sum + (t.minutes ?? 0), 0)
+            const isToday = daysBetween(today, day.date) === 0
+            const { weekday, dayNum } = dayParts(day.date)
             return (
-              <li key={day.date} className={`rounded-lg border bg-white p-3 ${overloaded ? 'border-amber-300 ring-1 ring-amber-200' : 'border-stone-200'}`}>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-semibold text-stone-800">
-                    {day.date} <span className="font-normal text-stone-400">· {relativeDay(day.date)} · {day.focus}</span>
-                  </span>
-                  {overloaded && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-700">Heavy day ({day.tasks.length})</span>}
+              <li key={day.date} className={`overflow-hidden rounded-xl border bg-white ${isToday ? 'border-terracotta-300 ring-1 ring-terracotta-200' : 'border-stone-200'}`}>
+                <div className={`flex items-center gap-3 px-3 py-2.5 ${isToday ? 'bg-terracotta-50/70' : 'bg-stone-50/60'}`}>
+                  <div className={`flex h-11 w-11 shrink-0 flex-col items-center justify-center rounded-lg leading-none ${isToday ? 'bg-terracotta-600 text-white' : 'bg-white text-stone-700 ring-1 ring-stone-200'}`}>
+                    <span className="text-[10px] font-medium uppercase tracking-wide opacity-80">{weekday}</span>
+                    <span className="text-base font-bold">{dayNum}</span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className={`text-xs font-semibold ${isToday ? 'text-terracotta-700' : 'text-stone-500'}`}>{relativeDay(day.date)}</span>
+                      {dayMinutes > 0 && (
+                        <span className="inline-flex items-center gap-0.5 text-[11px] font-medium text-stone-400">
+                          <Clock size={11} aria-hidden /> {formatMinutes(dayMinutes)}
+                        </span>
+                      )}
+                      {overloaded && <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">Heavy day</span>}
+                    </div>
+                    <p className="truncate text-sm font-medium text-stone-800">{day.focus}</p>
+                  </div>
+                  <span className={`shrink-0 text-xs font-semibold tabular-nums ${complete ? 'text-emerald-600' : 'text-stone-400'}`}>{done}/{total}</span>
                 </div>
-                <ul className="mt-2 space-y-1">
+                <ul className="divide-y divide-stone-100">
                   {day.tasks.map((t, ti) => {
                     const tag = taskTag(t)
+                    const linked = !!t.link
                     return (
-                      <li key={ti} className="flex items-start gap-2 text-sm">
-                        <input type="checkbox" checked={t.done} onChange={() => toggle(di, ti)} className="mt-1 accent-terracotta-600" />
-                        <span className={`mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${t.done ? 'bg-stone-100 text-stone-400' : tag.cls}`}>{tag.label}</span>
-                        <span className={t.done ? 'text-stone-400 line-through' : 'text-stone-700'}>{t.text}</span>
+                      <li key={ti} className="flex items-start gap-2.5 px-3 py-2 transition-colors hover:bg-stone-50">
+                        <input
+                          type="checkbox"
+                          checked={t.done}
+                          onChange={() => toggle(di, ti)}
+                          aria-label={t.done ? 'Mark not done' : 'Mark done'}
+                          className="mt-1 h-4 w-4 shrink-0 accent-terracotta-600"
+                        />
+                        <button
+                          type="button"
+                          disabled={!linked}
+                          onClick={() => t.link && navigate(t.link.to, { state: t.link.state })}
+                          title={linked ? 'Open this in the practice page' : undefined}
+                          className="group flex min-w-0 flex-1 items-start gap-2.5 text-left disabled:cursor-default"
+                        >
+                          <span className={`mt-px shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${t.done ? 'bg-stone-100 text-stone-400' : tag.cls}`}>{tag.label}</span>
+                          <span className={`text-sm ${t.done ? 'text-stone-400 line-through' : linked ? 'text-stone-700 group-hover:text-terracotta-700 group-hover:underline' : 'text-stone-700'}`}>
+                            {t.text}
+                          </span>
+                          {t.minutes ? (
+                            <span className={`ml-auto shrink-0 self-center whitespace-nowrap text-xs font-medium tabular-nums ${t.done ? 'text-stone-300' : 'text-stone-400'}`}>
+                              {formatMinutes(t.minutes)}
+                            </span>
+                          ) : null}
+                          {linked && (
+                            <ChevronRight size={14} className={`${t.minutes ? '' : 'ml-auto'} mt-0.5 shrink-0 text-stone-300 group-hover:text-terracotta-500`} aria-hidden />
+                          )}
+                        </button>
                       </li>
                     )
                   })}

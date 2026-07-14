@@ -324,6 +324,9 @@ export interface CustomPrepItem {
   assesses: string
   /** How to approach it — what a strong answer/response covers. */
   approach: string
+  /** What separates a great answer from a merely adequate one — the differentiator to reach for.
+   *  Optional so briefs authored before this field still parse. */
+  greatAnswer?: string
   /** A common mistake to avoid on this item. */
   trap: string
 }
@@ -332,6 +335,9 @@ export interface CustomPrepItem {
  *  selectors, there's nothing to rank — this is generated from the round's own topic/focus/notes + JD. */
 export interface CustomRoundPrep {
   generatedAt: string // ISO timestamp
+  /** A read of who is likely interviewing (role/seniority), the company's stage, and the lens they'll
+   *  evaluate through — the frame the items are built on. Optional for legacy briefs. */
+  interviewerRead?: string
   /** One- to two-sentence framing of what this round is really testing. */
   summary: string
   /** The likely questions / topics to prepare, most important first. */
@@ -367,6 +373,8 @@ export interface Application {
 export interface PrepTask {
   round: RoundType | 'review' | 'rest'
   text: string
+  /** Suggested time-box in minutes. Optional so legacy rows without an estimate still parse. */
+  minutes?: number
   done: boolean
 }
 export interface PrepDay {
@@ -390,6 +398,18 @@ export interface PrepPlan {
 // plan merged after the fact). Each task is attributed to the interview it serves, so a single
 // dated schedule shows parallel loops together. A single server row holds it (see prepPlanStore).
 
+/** Where a prep task deep-links: a practice route plus the react-router location state that page
+ *  reads to jump straight into the right problem/prompt (or open the application). */
+export interface PrepTaskLink {
+  to: string
+  state?: {
+    startProblemId?: string
+    startPromptId?: string
+    jobId?: string
+    persona?: 'recruiter' | 'hiring_manager'
+  }
+}
+
 /** One task in the global plan, attributed to the interview (company/round) it serves. The
  *  attribution fields are absent for general `review`/`rest` tasks that don't belong to one company. */
 export interface GlobalPrepTask extends PrepTask {
@@ -397,6 +417,8 @@ export interface GlobalPrepTask extends PrepTask {
   company?: string
   role?: string
   roundLabel?: string
+  /** Deep-link to the page where this task is actually practiced. */
+  link?: PrepTaskLink
 }
 export interface GlobalPrepDay {
   date: string // 'YYYY-MM-DD'
