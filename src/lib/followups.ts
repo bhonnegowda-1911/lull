@@ -119,7 +119,7 @@ export async function generateFollowups({
   const user = [
     resume?.trim() ? `CANDIDATE RESUME (context — do not assume facts beyond it):\n${resume.trim()}\n` : '',
     interviewerContext?.trim()
-      ? `WHAT THE CANDIDATE KNOWS ABOUT THIS INTERVIEWER (bias your follow-ups toward what they focus on; stay in persona):\n${interviewerContext.trim()}\n`
+      ? `WHO IS INTERVIEWING (become this specific interviewer). Adopt their role, seniority, and priorities — a CTO at a Series A, a security leader (CISO), a hiring manager, and a founder each probe VERY differently and care about different things. Ask what THIS person would actually dig into, at their altitude:\n${interviewerContext.trim()}\n`
       : '',
     `ORIGINAL QUESTION:\n${question}`,
     '',

@@ -85,27 +85,53 @@ function roundInterviewerContext(round: InterviewRoundInstance): string {
     .join(' — ')
 }
 
-/** A context-grounded conversational mock for a round with no bank prompt: opens the behavioral page
- *  seeded with the round's interviewer context and an ad-hoc question (its own authored prompt, or a
- *  neutral opener) — so it never lands on a random bank STAR question. */
+/** Reconstruct the interviewer context for a plan task from the live job — so a mock can be grounded
+ *  in who the candidate is meeting even when the stored task link predates context threading. */
+export function taskInterviewerContext(
+  jobs: JobDescription[],
+  task: { jobId?: string; round: GlobalPrepTask['round']; roundLabel?: string },
+): string {
+  const rounds = (task.jobId ? jobs.find((j) => j.id === task.jobId) : undefined)?.application?.rounds ?? []
+  const round =
+    (task.roundLabel ? rounds.find((r) => r.label === task.roundLabel) : undefined) ??
+    rounds.find((r) => r.type === task.round)
+  return round ? roundInterviewerContext(round) : ''
+}
+
+/** A context-grounded conversational mock: opens the behavioral page seeded with the round's
+ *  interviewer context, the right persona, and an ad-hoc question — so it never lands on a random bank
+ *  STAR question. */
 function behavioralMockLink(jobId: string, round: InterviewRoundInstance, startPrompt: NonNullable<PrepTaskLink['state']>['startPrompt']): PrepTaskLink {
   const interviewerContext = roundInterviewerContext(round)
+  const persona = round.type === 'recruiter' ? 'recruiter' : 'hiring_manager'
   return {
     to: '/practice/behavioral',
-    state: { jobId, persona: 'hiring_manager', ...(interviewerContext ? { interviewerContext } : {}), ...(startPrompt ? { startPrompt } : {}) },
+    state: { jobId, persona, ...(interviewerContext ? { interviewerContext } : {}), ...(startPrompt ? { startPrompt } : {}) },
   }
 }
 
-/** Where an attributed task with no specific saved-question lands. Rounds with a practice mode go to it;
- *  rounds with none (custom / onsite / founder chats) still get to PRACTICE — a context-grounded
- *  behavioral mock with a neutral opener — rather than dumping to the application. */
-function fallbackLink(jobId: string, round: InterviewRoundInstance): PrepTaskLink {
-  const mode = practiceModeLink(jobId, round.type)
-  if (mode) return mode
-  return behavioralMockLink(jobId, round, {
-    text: 'Tell me about your background and why this role — the interviewer will take it from there.',
-    label: `${round.label || roundLabel(round.type)} — open`,
-  })
+/** Turn a prep-plan task's description into the question the mock opens on — strip the leading verb
+ *  ("Rehearse:", "Prepare:", …) so the interviewer asks the content directly. */
+function taskQuestion(round: InterviewRoundInstance, description: string): NonNullable<PrepTaskLink['state']>['startPrompt'] {
+  // Only strip our own "Verb:" prefix (Rehearse:/Solve:/…); leave prose the model authored intact.
+  const text = description.replace(/^(rehearse|practice|prepare|prep|solve|review)\s*:\s*/i, '').replace(/\s+/g, ' ').trim()
+  return { text: text || description.trim(), label: `${round.label || roundLabel(round.type)} — from your plan` }
+}
+
+/** Where an attributed task with no specific saved-question lands. Coding/design/build rounds go to
+ *  their practice page. Behavioral and no-bank rounds (custom / founder chats) open a context-grounded
+ *  behavioral mock ON THE TASK'S OWN CONTENT (its plan description) — or a neutral opener if none —
+ *  rather than a random bank question or the application. */
+function fallbackLink(jobId: string, round: InterviewRoundInstance, description?: string): PrepTaskLink {
+  const mode = roundCatalog(round.type).practiceMode
+  if (mode && mode !== 'behavioral') return practiceModeLink(jobId, round.type)!
+  return behavioralMockLink(
+    jobId,
+    round,
+    description
+      ? taskQuestion(round, description)
+      : { text: 'Tell me about your background and why this role — the interviewer will take it from there.', label: `${round.label || roundLabel(round.type)} — open` },
+  )
 }
 
 /** The exact saved questions to practice for a round: the job's picks via the round's catalog
@@ -284,15 +310,33 @@ export async function generateGlobalPrepPlan(jobs: JobDescription[]): Promise<Gl
 type RawTask = { interview: number | null; ref: string | null; text: string; minutes: number }
 type RawDay = { dayIndex: number; tasks: RawTask[] }
 
-/** Resolve one LLM task into an attributed GlobalPrepTask. A `ref` that matches a saved-question code
- *  becomes that exact pick (canonical title + deep-link); anything else is a tailored task the model
- *  authored, attributed to its interview and linked to the application. Returns null if unusable. */
-function mapRawTask(t: RawTask, registry: Map<string, { practice: Practice; iv: IvDay }>, withDay: IvDay[]): GlobalPrepTask | null {
+interface RegEntry {
+  practice: Practice
+  iv: IvDay
+}
+
+/** Registry lookups, both keyed off the same practice items. */
+interface Registry {
+  byCode: Map<string, RegEntry>
+  byText: Map<string, RegEntry>
+}
+
+/** Normalize a task title for text matching: drop the verb prefix and trailing punctuation, lowercase. */
+function normPractice(s: string): string {
+  return s.trim().toLowerCase().replace(/^(rehearse|solve|practice|prep|prepare)\s*:\s*/i, '').replace(/[.?!]+$/, '').trim()
+}
+
+/** Resolve one LLM task into an attributed GlobalPrepTask. A task that matches a saved question — by
+ *  code (Q3/M1) or, if the model wrote the title as free text instead, by that title — becomes that
+ *  exact pick (canonical title + deep-link). Anything else is a tailored task the model authored,
+ *  attributed to its interview and linked to the round's practice page. Returns null if unusable. */
+function mapRawTask(t: RawTask, registry: Registry, withDay: IvDay[]): GlobalPrepTask | null {
   const minutes = typeof t.minutes === 'number' && t.minutes > 0 ? t.minutes : undefined
 
-  // Match the leading code token (Q3, M1), tolerating a model that appends the title after it.
+  // Match the leading code token (Q3, M1), tolerating a model that appends the title after it; failing
+  // that, match the title itself so an authored-as-text saved question still gets its real link.
   const code = t.ref?.trim().match(/^[qm]\d+/i)?.[0].toUpperCase()
-  const reg = code ? registry.get(code) : undefined
+  const reg = (code && registry.byCode.get(code)) || (t.text ? registry.byText.get(normPractice(t.text)) : undefined)
   if (reg) {
     const { practice, iv } = reg
     return {
@@ -318,15 +362,20 @@ function mapRawTask(t: RawTask, registry: Map<string, { practice: Practice; iv: 
     task.company = iv.company
     task.role = iv.role
     task.roundLabel = iv.round.label || roundLabel(iv.round.type)
-    // Land on the round's practice page (not the application) so a prep task still opens where it's worked.
-    task.link = fallbackLink(iv.jobId, iv.round)
+    // Land on practice (not the application). For a behavioral/no-bank round, open a mock on this task's
+    // own content (its text), so the interviewer asks what the plan says to rehearse.
+    task.link = fallbackLink(iv.jobId, iv.round, text)
   }
   return task
 }
 
 /** Ask the LLM for a tailored plan grounded in each interview's context + coded saved questions. */
 async function planWithLLM(withDay: IvDay[], findJob: (id: string) => JobDescription | null, today: string, span: number): Promise<GlobalPrepDay[]> {
-  const registry = new Map<string, { practice: Practice; iv: IvDay }>()
+  const registry: Registry = { byCode: new Map(), byText: new Map() }
+  const register = (code: string, entry: RegEntry) => {
+    registry.byCode.set(code, entry)
+    registry.byText.set(normPractice(entry.practice.text), entry)
+  }
   let q = 0
 
   const lines = withDay.map((iv, idx) => {
@@ -336,12 +385,12 @@ async function planWithLLM(withDay: IvDay[], findJob: (id: string) => JobDescrip
     const codeLines: string[] = []
     for (const it of items) {
       const code = `Q${++q}`
-      registry.set(code, { practice: it, iv })
+      register(code, { practice: it, iv })
       codeLines.push(`     ${code} ${it.text} (${it.minutes}m)`)
     }
     if (mock) {
       const code = `M${idx + 1}`
-      registry.set(code, { practice: mock, iv })
+      register(code, { practice: mock, iv })
       codeLines.push(`     ${code} ${mock.text} (${mock.minutes}m)`)
     }
     const focus = (iv.round.focusAreas ?? []).filter((a) => a.trim())
@@ -419,7 +468,7 @@ function buildDeterministicDays(withDay: IvDay[], findJob: (id: string) => JobDe
     if (items.length === 0) {
       const focus = (iv.round.focusAreas ?? []).filter((a) => a.trim())
       const about = iv.round.topic?.trim() || focus.join(', ') || 'key topics + your stories'
-      put(contentEnd, attribute({ text: `Review ${roundLbl}: ${about}`, minutes: 30, link: fallbackLink(iv.jobId, iv.round) }))
+      put(contentEnd, attribute({ text: `Review ${roundLbl}: ${about}`, minutes: 30, link: fallbackLink(iv.jobId, iv.round, about) }))
     } else {
       items.forEach((p, k) => put(1 + Math.floor((k * contentEnd) / items.length), attribute(p)))
     }

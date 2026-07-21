@@ -23,7 +23,7 @@ export function buildFeedback({ llm, filler }: BuildFeedbackInput = {}): Feedbac
   if (fillerNote) notes.push(fillerNote)
 
   const beats: Feedback['beats'] = star.perBeat
-    ? (['situation', 'task', 'action', 'result'] as const).map((key) => ({
+    ? (['situation', 'task', 'action', 'result', 'reflection'] as const).map((key) => ({
         key,
         label: key.charAt(0).toUpperCase() + key.slice(1),
         ...star.perBeat![key],

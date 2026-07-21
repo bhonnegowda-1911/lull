@@ -13,7 +13,7 @@ import {
   toISODate,
 } from '../lib/application/schedule'
 import { upcomingRounds } from '../lib/application/agenda'
-import { activeInterviews, generateGlobalPrepPlan, prepInputSignature } from '../lib/application/globalPrepPlan'
+import { activeInterviews, generateGlobalPrepPlan, prepInputSignature, taskInterviewerContext } from '../lib/application/globalPrepPlan'
 import type { Application, JobDescription, RoundType, StageOutcome } from '../types'
 
 // Stub the banks so pick IDs resolve to predictable titles/labels without depending on the real
@@ -420,13 +420,19 @@ describe('generateGlobalPrepPlan', () => {
 
     const tasks = (await generateGlobalPrepPlan([custom, onsite])).days.flatMap((d) => d.tasks)
     expect(tasks.find((t) => t.text.startsWith('Full timed mock'))).toBeTruthy()
-    // Custom round tailored task → grounded behavioral mock (context + a neutral opener), not the app.
+    // Custom round tailored task → grounded behavioral mock that opens ON THE TASK'S OWN CONTENT.
     const cto = tasks.find((t) => t.text === 'Prepare a POV for the CTO')
     expect(cto?.link?.to).toBe('/practice/behavioral')
-    expect(cto?.link?.state).toMatchObject({ jobId: 'a', persona: 'hiring_manager', interviewerContext: 'Founder chat — CTO, Series A — Focus: ownership' })
-    expect(cto?.link?.state?.startPrompt?.text).toBeTruthy()
-    // Onsite (no context) → still a behavioral mock, never the application.
-    expect(tasks.find((t) => t.text === 'Prep for the panel')?.link).toMatchObject({ to: '/practice/behavioral', state: { jobId: 'b', persona: 'hiring_manager' } })
+    expect(cto?.link?.state).toMatchObject({
+      jobId: 'a',
+      persona: 'hiring_manager',
+      interviewerContext: 'Founder chat — CTO, Series A — Focus: ownership',
+      startPrompt: { text: 'Prepare a POV for the CTO' },
+    })
+    // Onsite (no context) → behavioral mock on the task content, never the application.
+    const panel = tasks.find((t) => t.text === 'Prep for the panel')
+    expect(panel?.link?.to).toBe('/practice/behavioral')
+    expect(panel?.link?.state).toMatchObject({ jobId: 'b', persona: 'hiring_manager', startPrompt: { text: 'Prep for the panel' } })
   })
 
   it('practices a custom round’s OWN authored questions via a context-grounded mock (not a bank question)', async () => {
@@ -453,8 +459,40 @@ describe('generateGlobalPrepPlan', () => {
     })
   })
 
+  it('resolves a saved question the model wrote as free text (no code) back to its real link', async () => {
+    const today = toISODate()
+    const custom = jobWith({ id: 'a', company: 'Verkada', type: 'custom', scheduledAt: addDays(today, 3), topic: 'Founder chat' })
+    custom.application!.rounds[0].customPrep = {
+      generatedAt: '2026-07-14',
+      summary: 's',
+      prepActions: [],
+      items: [{ prompt: 'What makes you want to build AI infra for Verkada?', assesses: 'motivation', approach: 'a', trap: 't' }],
+    }
+    // The model ignores the code and writes the question as a tailored task — with a verb prefix, no code.
+    mockChat.mockResolvedValue({
+      parsed: { days: [{ dayIndex: 1, tasks: [{ interview: 1, ref: null, text: 'Rehearse: What makes you want to build AI infra for Verkada', minutes: 20 }] }] },
+    } as never)
+
+    const task = (await generateGlobalPrepPlan([custom])).days.flatMap((d) => d.tasks)[0]
+    // It still resolves to the authored question's grounded mock, not a bare /app or bank prompt.
+    expect(task.link?.to).toBe('/practice/behavioral')
+    expect(task.link?.state?.startPrompt?.text).toBe('What makes you want to build AI infra for Verkada?')
+  })
+
   it('returns an empty plan when nothing is scheduled', async () => {
     const plan = await generateGlobalPrepPlan([jobWith({ id: 'a', scheduledAt: null })])
     expect(plan.days).toEqual([])
+  })
+})
+
+describe('taskInterviewerContext', () => {
+  it('reconstructs who the candidate is meeting from the job round (topic + notes + focus)', () => {
+    const job = jobWith({ id: 'a', company: 'Verkada', type: 'custom', scheduledAt: '2026-07-20', topic: 'Founder chat', focusAreas: ['ownership'] })
+    job.application!.rounds[0].notes = 'CISO Kyle'
+    expect(taskInterviewerContext([job], { jobId: 'a', round: 'custom', roundLabel: 'Custom round' })).toBe('Founder chat — CISO Kyle — Focus: ownership')
+  })
+
+  it('returns empty when the job or round is unknown', () => {
+    expect(taskInterviewerContext([], { jobId: 'x', round: 'custom' })).toBe('')
   })
 })

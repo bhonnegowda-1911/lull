@@ -1,12 +1,13 @@
 import { useState } from 'react'
 import { transcribe } from '../lib/transcribe'
 import Recorder, { type RecordMode, type TakeMeta } from './Recorder'
+import TextAnswerBox from './TextAnswerBox'
 import type { Followup } from '../lib/followups'
 import type { Transcript } from '../types'
 
 // The follow-up step of a behavioral rep: the interviewer's probing questions, each answered by
-// recording + transcribing. No per-answer grading here — the whole conversation is graded once
-// at the end (see BehavioralView). Answers are reported up so the final grade can include them.
+// recording + transcribing OR by typing. No per-answer grading here — the whole conversation is graded
+// once at the end (see BehavioralView). Answers are reported up so the final grade can include them.
 
 type RowState =
   | { status: 'idle' }
@@ -24,11 +25,12 @@ function FollowUpRow({
   onAnswered: (index: number, transcript: Transcript) => void
 }) {
   const [mode, setMode] = useState<RecordMode>('audio')
-  const [active, setActive] = useState(false)
+  // 'record' opens the audio/video recorder; 'write' opens a text box. null = the initial choice buttons.
+  const [active, setActive] = useState<'record' | 'write' | null>(null)
   const [state, setState] = useState<RowState>({ status: 'idle' })
 
   async function handleUseTake(blob: Blob, { durationSec }: TakeMeta) {
-    setActive(false)
+    setActive(null)
     setState({ status: 'transcribing' })
     try {
       const { transcript } = await transcribe(blob, { fallbackDurationSec: durationSec })
@@ -38,6 +40,14 @@ function FollowUpRow({
     } catch (e) {
       setState({ status: 'error', error: (e as Error)?.message || 'Something went wrong.' })
     }
+  }
+
+  function handleTyped(text: string) {
+    const transcript: Transcript = { text: text.trim(), durationSec: null }
+    if (!transcript.text) return
+    setActive(null)
+    setState({ status: 'done', transcript })
+    onAnswered(index, transcript)
   }
 
   return (
@@ -55,16 +65,29 @@ function FollowUpRow({
 
       <div className="mt-3">
         {state.status === 'idle' && !active && (
-          <button
-            type="button"
-            onClick={() => setActive(true)}
-            className="rounded-md border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-50"
-          >
-            Record answer
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setActive('record')}
+              className="rounded-md border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-50"
+            >
+              Record answer
+            </button>
+            <button
+              type="button"
+              onClick={() => setActive('write')}
+              className="rounded-md border border-stone-300 px-3 py-1.5 text-sm font-medium text-stone-700 hover:bg-stone-50"
+            >
+              Type answer
+            </button>
+          </div>
         )}
 
-        {active && <Recorder mode={mode} onModeChange={setMode} onUseTake={handleUseTake} />}
+        {active === 'record' && <Recorder mode={mode} onModeChange={setMode} onUseTake={handleUseTake} />}
+
+        {active === 'write' && (
+          <TextAnswerBox onSubmit={handleTyped} submitLabel="Save answer" rows={3} placeholder="Type your response…" />
+        )}
 
         {state.status === 'transcribing' && (
           <div className="flex items-center gap-2 text-sm text-stone-500">
@@ -95,7 +118,7 @@ function FollowUpRow({
               onClick={() => setState({ status: 'idle' })}
               className="mt-2 text-sm font-medium text-terracotta-600 hover:text-terracotta-500"
             >
-              Re-record
+              Answer again
             </button>
           </div>
         )}

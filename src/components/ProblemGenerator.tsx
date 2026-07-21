@@ -1,11 +1,12 @@
 import { useState } from 'react'
 import { Sparkles, X } from 'lucide-react'
 
-// Collapsible "generate a problem on demand" panel rendered at the top of a ProblemPicker. It owns the
-// little spec form (free-text prompt + optional difficulty + optional focus) and the loading/error
-// state around the async call; the parent supplies `onGenerate`, which authors the problem via the LLM,
-// persists it, and (typically) starts the interview. Mode-agnostic: coding passes a `focus` field for
-// the DSA pattern; system design omits it.
+// Collapsible "generate on demand" panel rendered at the top of a ProblemPicker (and reused by the
+// behavioral question selector). It owns the little spec form (free-text prompt + optional difficulty +
+// optional focus) and the loading/error state around the async call; the parent supplies `onGenerate`,
+// which authors the item via the LLM, persists it, and (typically) starts the interview. Mode-agnostic:
+// coding passes a `focus` field for the DSA pattern; system design omits it; behavioral passes no
+// difficulties (the select hides) and overrides the copy.
 
 export interface GenSpec {
   prompt: string
@@ -24,8 +25,14 @@ interface ProblemGeneratorProps {
   focusLabel?: string
   focusPlaceholder?: string
   promptPlaceholder: string
-  /** Verb-y noun for copy, e.g. "coding problem" / "system-design problem". */
+  /** Verb-y noun for copy, e.g. "coding problem" / "system-design problem" / "behavioral question". */
   noun: string
+  /** Overrides the helper paragraph under the title. */
+  description?: string
+  /** Overrides the primary button label (default "Generate & start"). */
+  ctaLabel?: string
+  /** Overrides the "authoring…" hint shown beside a busy button. */
+  busyHint?: string
 }
 
 export default function ProblemGenerator({
@@ -37,6 +44,9 @@ export default function ProblemGenerator({
   focusPlaceholder,
   promptPlaceholder,
   noun,
+  description,
+  ctaLabel,
+  busyHint,
 }: ProblemGeneratorProps) {
   const [open, setOpen] = useState(false)
   const [prompt, setPrompt] = useState('')
@@ -96,8 +106,8 @@ export default function ProblemGenerator({
       </div>
 
       <p className="mt-1 text-xs text-stone-500">
-        Describe what you want to practice. It’s authored with its own grading reference, so it runs the
-        full interview and leveling report just like a curated problem.
+        {description ??
+          'Describe what you want to practice. It’s authored with its own grading reference, so it runs the full interview and leveling report just like a curated problem.'}
       </p>
 
       <textarea
@@ -118,19 +128,21 @@ export default function ProblemGenerator({
             className="min-w-0 flex-1 rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm text-stone-800 placeholder:text-stone-400 focus:border-terracotta-400 focus:outline-none focus:ring-1 focus:ring-terracotta-300"
           />
         )}
-        <select
-          value={difficulty}
-          onChange={(e) => setDifficulty(e.target.value)}
-          aria-label="Difficulty"
-          className="rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm text-stone-700 focus:border-terracotta-400 focus:outline-none focus:ring-1 focus:ring-terracotta-300"
-        >
-          <option value="">Any difficulty</option>
-          {difficulties.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </select>
+        {difficulties.length > 0 && (
+          <select
+            value={difficulty}
+            onChange={(e) => setDifficulty(e.target.value)}
+            aria-label="Difficulty"
+            className="rounded-md border border-stone-300 bg-white px-2.5 py-1.5 text-sm text-stone-700 focus:border-terracotta-400 focus:outline-none focus:ring-1 focus:ring-terracotta-300"
+          >
+            <option value="">Any difficulty</option>
+            {difficulties.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
 
       {error && <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div>}
@@ -148,11 +160,11 @@ export default function ProblemGenerator({
             </>
           ) : (
             <>
-              <Sparkles size={14} aria-hidden /> Generate &amp; start
+              <Sparkles size={14} aria-hidden /> {ctaLabel ?? 'Generate & start'}
             </>
           )}
         </button>
-        {busy && <span className="text-xs text-stone-500">Writing the problem and its grading key…</span>}
+        {busy && <span className="text-xs text-stone-500">{busyHint ?? 'Writing the problem and its grading key…'}</span>}
       </div>
     </div>
   )

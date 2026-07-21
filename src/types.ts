@@ -90,7 +90,7 @@ export interface CoachingNote {
 
 export interface StarGrading {
   conforms: boolean
-  perBeat: { situation: StarBeat; task: StarBeat; action: StarBeat; result: StarBeat }
+  perBeat: { situation: StarBeat; task: StarBeat; action: StarBeat; result: StarBeat; reflection: StarBeat }
   scores: StarScores
   summary: string
   deliveryHabits: DeliveryHabits

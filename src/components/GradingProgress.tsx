@@ -12,6 +12,7 @@ const BEATS = [
   { key: 'task', label: 'Task' },
   { key: 'action', label: 'Action' },
   { key: 'result', label: 'Result' },
+  { key: 'reflection', label: 'Reflection' },
 ] as const
 
 const PHASE_LABEL: Record<'thinking' | 'writing', string> = {

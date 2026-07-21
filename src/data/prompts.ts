@@ -23,7 +23,8 @@ export const ANSWER_FRAMEWORK: string[] = [
   'Lead with the headline. Open with the result/impact in one sentence, THEN tell the story. Don’t make them wait for the payoff.',
   'Set the scene fast: 1–2 sentences of Situation + Task. Just enough context, no scene-painting.',
   'Spend most of your time on YOUR Actions — the decisions and tradeoffs you made (say “I”, not “we”). Stay at the altitude of decisions, not every step.',
-  'Close the loop: state the Result, tie it back to your opening headline, and add one sentence on what you learned.',
+  'Close the loop: state the Result and tie it back to your opening headline.',
+  'End with a brief Reflection: what your actions achieved and the one real thing you learned or would do differently. A specific insight, not a cliché.',
   'Aim for ~2 minutes. If you’re past 3, you’re over-detailing.',
 ]
 

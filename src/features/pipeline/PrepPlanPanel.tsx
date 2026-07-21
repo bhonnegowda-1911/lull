@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { ListChecks, CalendarPlus, RefreshCw, Sparkles, Clock, ChevronRight } from 'lucide-react'
 import { roundLabel } from '../../data/rounds'
 import { daysBetween, relativeDay, toISODate } from '../../lib/application/schedule'
-import { activeInterviews, generateGlobalPrepPlan, prepInputSignature } from '../../lib/application/globalPrepPlan'
+import { activeInterviews, generateGlobalPrepPlan, prepInputSignature, taskInterviewerContext } from '../../lib/application/globalPrepPlan'
 import { getPrepPlan, savePrepPlan } from '../../lib/prepPlanStore'
 import Pending from '../../components/Pending'
 import type { GlobalPrepPlan, GlobalPrepTask, JobDescription } from '../../types'
@@ -89,6 +89,26 @@ export default function PrepPlanPanel({ jobs, onPlanChange }: Props) {
     } finally {
       setBuilding(false)
     }
+  }
+
+  // Open a task at its practice page. For a behavioral mock, backfill anything the stored link is
+  // missing at click time — the question (from the task's own text) and the interviewer context (who
+  // they're meeting, reconstructed from the round) — so the conversation is grounded even on a plan
+  // built before those were threaded through, without needing a regenerate.
+  function openTask(t: GlobalPrepTask) {
+    if (!t.link) return
+    let state = t.link.state
+    if (t.link.to === '/practice/behavioral') {
+      if (!state?.startPrompt && !state?.startPromptId) {
+        const text = t.text.replace(/^(rehearse|practice|prepare|prep|solve|review)\s*:\s*/i, '').replace(/\s+/g, ' ').trim()
+        if (text) state = { ...state, startPrompt: { text, label: `${t.roundLabel ?? 'This round'} — from your plan` } }
+      }
+      if (!state?.interviewerContext) {
+        const context = taskInterviewerContext(jobs, t)
+        if (context) state = { ...state, interviewerContext: context }
+      }
+    }
+    navigate(t.link.to, { state })
   }
 
   function toggle(dayIdx: number, taskIdx: number) {
@@ -197,7 +217,7 @@ export default function PrepPlanPanel({ jobs, onPlanChange }: Props) {
                         <button
                           type="button"
                           disabled={!linked}
-                          onClick={() => t.link && navigate(t.link.to, { state: t.link.state })}
+                          onClick={() => openTask(t)}
                           title={linked ? 'Open this in the practice page' : undefined}
                           className="group flex min-w-0 flex-1 items-start gap-2.5 text-left disabled:cursor-default"
                         >

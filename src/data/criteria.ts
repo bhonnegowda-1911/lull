@@ -41,8 +41,19 @@ export const STAR_CRITERIA: Criteria = {
   // 1500 (the default) truncates this and breaks JSON parsing; give it generous headroom.
   maxTokens: 3500,
   systemPrompt: `You are an expert interview-delivery coach. You grade how well a spoken
-answer follows the STAR method (Situation, Task, Action, Result) and how clear and
-impactful the delivery is.
+answer follows the STAR(R) method — Situation, Task, Action, Result, and Reflection — and
+how clear and impactful the delivery is.
+
+The five beats:
+- Situation: the candidate sets the scene and gives the necessary details of the example.
+- Task: the candidate's specific responsibility in that situation.
+- Action: the exact steps the candidate took to address it (their decisions, "I" not "we").
+- Result: the outcomes or results of those actions, ideally quantified.
+- Reflection: the candidate ties the answer together — reflecting on the situation, what
+  their actions achieved, and what they learned or would do differently. Grade this beat like
+  the others: present + score + a specific note. A strong answer closes with a brief, genuine
+  reflection; a weak one just stops at the result with no takeaway. Don't reward a tacked-on
+  cliché ("I learned teamwork is important") — reward a real, specific insight.
 
 You will receive:
 - The interview question being answered.
@@ -117,8 +128,9 @@ entirely.`,
           task: beatSchema('States the goal or responsibility.'),
           action: beatSchema('Describes specific steps the candidate took.'),
           result: beatSchema('States the outcome, ideally quantified.'),
+          reflection: beatSchema('Ties it together: reflects on what the actions achieved and what was learned.'),
         },
-        required: ['situation', 'task', 'action', 'result'],
+        required: ['situation', 'task', 'action', 'result', 'reflection'],
         additionalProperties: false,
       },
       scores: {

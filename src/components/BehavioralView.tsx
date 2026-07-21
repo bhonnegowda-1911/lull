@@ -19,7 +19,16 @@ import { extractStory } from '../lib/stories/extract'
 import { DEFAULT_PROFILE, type Profile, type Story } from '../data/stories'
 import { assetUrl } from '../lib/assetStore'
 import PromptCard from './PromptCard'
+import ProblemGenerator, { type GenSpec } from './ProblemGenerator'
+import {
+  loadCustomPrompts,
+  hydrateCustomPrompts,
+  addCustomPrompt,
+  deleteCustomPrompt,
+} from '../lib/behavioral/customQuestions'
+import { generateBehavioralQuestion } from '../lib/behavioral/generateQuestion'
 import Recorder, { type RecordMode, type TakeMeta } from './Recorder'
+import TextAnswerBox from './TextAnswerBox'
 import FeedbackPanel from './FeedbackPanel'
 import FollowUpAnswers from './FollowUpAnswers'
 import FocusTargets from './FocusTargets'
@@ -71,6 +80,7 @@ interface State {
 
 type Action =
   | { type: 'START'; replayUrl: string; isVideo: boolean }
+  | { type: 'START_TEXT'; transcript: Transcript }
   | { type: 'MAIN_DONE'; transcript: Transcript; audioAssetId: string | null }
   | { type: 'FOLLOWUPS'; followups: Followup[] }
   | { type: 'ANSWER'; index: number; transcript: Transcript }
@@ -97,6 +107,10 @@ function reducer(state: State, action: Action): State {
     case 'START':
       if (state.replayUrl?.startsWith('blob:')) URL.revokeObjectURL(state.replayUrl)
       return { ...initialState, phase: 'transcribing', replayUrl: action.replayUrl, isVideo: action.isVideo }
+    case 'START_TEXT':
+      // A typed answer skips recording + transcription entirely: no audio, straight to follow-ups.
+      if (state.replayUrl?.startsWith('blob:')) URL.revokeObjectURL(state.replayUrl)
+      return { ...initialState, phase: 'followups_generating', mainTranscript: action.transcript, audioAssetId: null }
     case 'MAIN_DONE':
       return { ...state, phase: 'followups_generating', mainTranscript: action.transcript, audioAssetId: action.audioAssetId }
     case 'FOLLOWUPS':
@@ -165,14 +179,56 @@ async function captureStoryDraft(question: string, transcript: Transcript, sessi
   }
 }
 
+/** A prep-plan launch carried in router state: a question and/or interviewer context to practice. */
+interface PlanLaunch {
+  startPromptId?: string
+  jobId?: string
+  persona?: InterviewerPersona
+  interviewerContext?: string
+  startPrompt?: { text: string; label: string; assesses?: string; tip?: string; trap?: string }
+}
+
+/** Read a plan launch from router state, or null for open practice / a resumed session. */
+function readPlanLaunch(state: unknown): PlanLaunch | null {
+  const s = state as (PlanLaunch & { session?: unknown }) | null
+  if (!s || s.session) return null // a resumed History session, not a plan launch
+  if (!s.startPromptId && !s.jobId && !s.persona && !s.interviewerContext && !s.startPrompt) return null
+  return s
+}
+
+/** The ad-hoc question a launch should practice: its own authored prompt, a neutral grounded opener
+ *  when it carries only context, or null when a bank prompt id (or nothing) drives the question. */
+function launchPrompt(launch: PlanLaunch | null): Prompt | null {
+  if (!launch) return null
+  if (launch.startPrompt) {
+    const p = launch.startPrompt
+    return { id: 'custom-round', category: p.label, label: p.label, text: p.text, assesses: p.assesses ?? '', tip: p.tip ?? '', trap: p.trap ?? '', avoid: '' }
+  }
+  if (launch.startPromptId) return null // a bank prompt id drives the question instead
+  // Only context (a custom round, or an older saved plan): a neutral opener, never a random bank question.
+  return { id: 'round-open', category: 'Open conversation', label: 'Open the conversation', text: 'Tell me about your background and why this role — the interviewer will take it from there.', assesses: '', tip: '', trap: '', avoid: '' }
+}
+
 export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void }) {
-  const { hasAllKeys } = useApiKeys()
+  const { hasAllKeys, hasAnthropic } = useApiKeys()
+  const location = useLocation()
+  // A prep-plan launch (question + persona + interviewer context), read ONCE at mount. Applied via
+  // useState initializers below — synchronously on the first render — so the chosen question is in
+  // place immediately rather than depending on an effect that can lose the race (or a StrictMode
+  // remount) and fall back to a bank question.
+  const launch = readPlanLaunch(location.state)
+
   const [state, dispatch] = useReducer(reducer, initialState)
   const [recordMode, setRecordMode] = useState<RecordMode>('audio')
-  const [promptId, setPromptId] = useState(DEFAULT_PROMPT.id)
+  // How the candidate gives their answer: record audio/video (scored for delivery too) or type it.
+  const [inputMethod, setInputMethod] = useState<'record' | 'write'>('record')
+  const [promptId, setPromptId] = useState(launch?.startPromptId ?? DEFAULT_PROMPT.id)
   // An ad-hoc question launched from a prep-plan task for a round with no bank prompt (custom rounds
   // practice their own authored question). Takes precedence over the selected bank prompt until cleared.
-  const [customPrompt, setCustomPrompt] = useState<Prompt | null>(null)
+  const [customPrompt, setCustomPrompt] = useState<Prompt | null>(() => launchPrompt(launch))
+  // User-authored questions (LLM-generated on demand), server-durable with a localStorage cache. Seeded
+  // synchronously from the cache; hydrated from the server on mount.
+  const [customQuestions, setCustomQuestions] = useState<Prompt[]>(loadCustomPrompts)
   const [mode, setMode] = useState<BehavioralMode>('interview')
   const [profile, setProfile] = useState<Profile>(DEFAULT_PROFILE)
   // The target job this practice was launched for (from a round's plan), or null for open practice.
@@ -182,16 +238,20 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
   const [gradeProgress, setGradeProgress] = useState<GradeProgress>({})
   // Who's running this round — shapes the follow-ups. A recruiter never asks technical questions.
   // Defaults to a hiring manager (open practice from the nav, unchanged from before).
-  const [persona, setPersona] = useState<InterviewerPersona>('hiring_manager')
+  const [persona, setPersona] = useState<InterviewerPersona>(launch?.persona ?? 'hiring_manager')
   // First-hand intel about this interviewer (the round's notes) — biases the follow-ups toward
   // what they actually focus on. Empty for open practice.
-  const [interviewerContext, setInterviewerContext] = useState('')
+  const [interviewerContext, setInterviewerContext] = useState(launch?.interviewerContext ?? '')
   const abortRef = useRef<AbortController | null>(null)
-  const location = useLocation()
 
   // Load the resume + target level once; interview mode uses them to calibrate follow-ups.
   useEffect(() => {
     getProfile().then(setProfile)
+  }, [])
+
+  // Refresh saved custom questions from the server (durable copy may hold items not in this cache).
+  useEffect(() => {
+    void hydrateCustomPrompts().then(setCustomQuestions)
   }, [])
 
   // Celebrate a freshly graded answer (grading → done). Guarded by the prior phase so reopening a
@@ -221,58 +281,74 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resume?.id])
 
-  // Pre-select a question chosen from a target job's plan (Prep → Match → Practice), ready to record.
-  // The plan also passes the job id so grading can rate fit to that company/JD bar.
-  const navState = location.state as
-    | {
-        startPromptId?: string
-        jobId?: string
-        persona?: InterviewerPersona
-        interviewerContext?: string
-        startPrompt?: { text: string; label: string; assesses?: string; tip?: string; trap?: string }
-      }
-    | null
-  const startPromptId = navState?.startPromptId
-  const startJobId = navState?.jobId
-  const startPersona = navState?.persona
-  const startInterviewerContext = navState?.interviewerContext
-  const startPrompt = navState?.startPrompt
-  const startPromptKey = startPrompt?.text
+  // The question/persona/context above are applied synchronously via the useState initializers. This
+  // effect only handles the side effects of a plan launch: loading the target job (async), resetting
+  // any prior session, re-applying if the user re-navigates here while already mounted, and clearing the
+  // consumed router state so a plain refresh doesn't re-apply it.
+  const launchKey = launch ? `${launch.startPromptId ?? ''}|${launch.jobId ?? ''}|${launch.startPrompt?.text ?? ''}` : ''
   useEffect(() => {
-    // A prep-plan task for a custom/no-bank round arrives with persona + interviewer context and often
-    // an ad-hoc question (its own authored prompt) but no bank prompt id — apply all of it so the mock
-    // is grounded in the real round rather than a random bank question.
-    if (!startPromptId && !startPersona && !startInterviewerContext && !startJobId && !startPrompt) return
-    if (startPrompt) {
-      setCustomPrompt({
-        id: 'custom-round',
-        category: startPrompt.label,
-        label: startPrompt.label,
-        text: startPrompt.text,
-        assesses: startPrompt.assesses ?? '',
-        tip: startPrompt.tip ?? '',
-        trap: startPrompt.trap ?? '',
-        avoid: '',
-      })
-    } else if (startPromptId) {
-      setCustomPrompt(null)
-      setPromptId(startPromptId)
-    }
+    if (!launch) return
+    setCustomPrompt(launchPrompt(launch))
+    if (launch.startPromptId) setPromptId(launch.startPromptId)
+    if (launch.persona) setPersona(launch.persona)
+    if (launch.interviewerContext) setInterviewerContext(launch.interviewerContext)
     dispatch({ type: 'RESET' })
-    if (startPersona) setPersona(startPersona)
-    if (startInterviewerContext) setInterviewerContext(startInterviewerContext)
-    if (startJobId) void getJob(startJobId).then((j) => setTargetJob(j?.parsed ?? null))
+    if (launch.jobId) void getJob(launch.jobId).then((j) => setTargetJob(j?.parsed ?? null))
     window.history.replaceState({}, '')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [startPromptId, startJobId, startPersona, startInterviewerContext, startPromptKey])
+  }, [launchKey])
 
-  const prompt = customPrompt ?? (PROMPTS.find((p) => p.id === promptId) || DEFAULT_PROMPT)
+  const prompt =
+    customPrompt ??
+    customQuestions.find((p) => p.id === promptId) ??
+    PROMPTS.find((p) => p.id === promptId) ??
+    DEFAULT_PROMPT
   const busy = state.phase === 'transcribing' || state.phase === 'followups_generating' || state.phase === 'grading'
 
   function handleSelectPrompt(id: string) {
+    // Picking a real bank OR saved custom question clears any ad-hoc launch prompt; re-picking the
+    // "This round" option (an id in neither list) is a no-op so the launch question stays put.
+    if (!PROMPTS.some((p) => p.id === id) && !customQuestions.some((p) => p.id === id)) return
     setCustomPrompt(null)
     setPromptId(id)
     if (state.phase !== 'idle') dispatch({ type: 'RESET' })
+  }
+
+  // Author a new behavioral question on demand, persist it, and select it for practice.
+  async function handleGenerate(spec: GenSpec) {
+    const question = await generateBehavioralQuestion({ prompt: spec.prompt, focus: spec.focus || undefined })
+    addCustomPrompt(question)
+    setCustomQuestions((prev) => [question, ...prev.filter((p) => p.id !== question.id)])
+    setCustomPrompt(null)
+    setPromptId(question.id)
+    if (state.phase !== 'idle') dispatch({ type: 'RESET' })
+  }
+
+  function handleDeleteCustom(id: string) {
+    deleteCustomPrompt(id)
+    setCustomQuestions((prev) => prev.filter((p) => p.id !== id))
+    // If the deleted question was selected, fall back to the default bank prompt.
+    if (promptId === id) setPromptId(DEFAULT_PROMPT.id)
+  }
+
+  // The interviewer probes before we grade. If generation fails, fall through to the follow-up phase
+  // with no questions — you can still grade the main answer alone. Shared by the audio and text paths.
+  async function generateAndSetFollowups(transcript: Transcript, signal: AbortSignal) {
+    try {
+      const followups = await generateFollowups({
+        question: prompt.text,
+        transcript,
+        resume: profile.resumeText,
+        targetLevel: profile.targetLevel,
+        persona,
+        interviewerContext,
+        signal,
+      })
+      dispatch({ type: 'FOLLOWUPS', followups })
+    } catch (e) {
+      if ((e as Error)?.name === 'AbortError') return
+      dispatch({ type: 'FOLLOWUPS', followups: [] })
+    }
   }
 
   async function handleUseTake(blob: Blob, { durationSec, isVideo }: TakeMeta) {
@@ -292,27 +368,30 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
       })
       if (!transcript.text) throw new Error('No speech was detected in the recording. Try again.')
       dispatch({ type: 'MAIN_DONE', transcript, audioAssetId: assetId })
-
-      // The interviewer probes before we grade. If generation fails, fall through to the
-      // follow-up phase with no questions — you can still grade the main answer alone.
-      try {
-        const followups = await generateFollowups({
-          question: prompt.text,
-          transcript,
-          resume: profile.resumeText,
-          targetLevel: profile.targetLevel,
-          persona,
-          interviewerContext,
-          signal: controller.signal,
-        })
-        dispatch({ type: 'FOLLOWUPS', followups })
-      } catch (e) {
-        if ((e as Error)?.name === 'AbortError') return
-        dispatch({ type: 'FOLLOWUPS', followups: [] })
-      }
+      await generateAndSetFollowups(transcript, controller.signal)
     } catch (e) {
       if ((e as Error)?.name === 'AbortError') return
       dispatch({ type: 'ERROR', error: (e as Error)?.message || 'Something went wrong.' })
+    } finally {
+      abortRef.current = null
+    }
+  }
+
+  // A typed answer: no recording/transcription — feed the text straight into the same pipeline. Only
+  // needs the Anthropic key (follow-ups + grading), not OpenAI (which is transcription-only).
+  async function handleUseText(text: string) {
+    if (!hasAnthropic) {
+      onNeedKeys?.()
+      return
+    }
+    const transcript: Transcript = { text: text.trim(), durationSec: null }
+    if (!transcript.text) return
+    dispatch({ type: 'START_TEXT', transcript })
+
+    const controller = new AbortController()
+    abortRef.current = controller
+    try {
+      await generateAndSetFollowups(transcript, controller.signal)
     } finally {
       abortRef.current = null
     }
@@ -402,8 +481,30 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_320px]">
       <div className="space-y-5">
-        <div className="flex items-center justify-between">
-          <PromptCard prompt={prompt} onSelect={handleSelectPrompt} disabled={busy} interviewMode={mode === 'interview'} />
+        <div>
+          <PromptCard
+            prompt={prompt}
+            onSelect={handleSelectPrompt}
+            disabled={busy}
+            interviewMode={mode === 'interview'}
+            customPrompts={customQuestions}
+            onDeleteCustom={handleDeleteCustom}
+          />
+          {state.phase === 'idle' && (
+            <ProblemGenerator
+              noun="behavioral question"
+              hasKeys={hasAnthropic}
+              onNeedKeys={onNeedKeys}
+              onGenerate={handleGenerate}
+              difficulties={[]}
+              focusLabel="Competency"
+              focusPlaceholder="Competency (optional), e.g. Leadership"
+              promptPlaceholder="e.g. Tell me about a time you turned around an underperforming team member — or paste a question you were actually asked"
+              description="Describe what you want to practice, or paste a question you were asked. It’s authored with prep guidance and runs the same follow-up and grading flow as a curated question."
+              ctaLabel="Add & select"
+              busyHint="Writing the question and its prep guidance…"
+            />
+          )}
         </div>
 
         {state.phase === 'idle' && (
@@ -435,7 +536,39 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
         {state.phase === 'idle' && mode === 'interview' && <RealismChecklist />}
 
         {state.phase === 'idle' && (
-          <Recorder mode={recordMode} onModeChange={setRecordMode} onUseTake={handleUseTake} disabled={busy} />
+          <div className="space-y-3">
+            <div className="inline-flex rounded-md border border-stone-200 p-0.5 text-sm">
+              {(['record', 'write'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => setInputMethod(m)}
+                  disabled={busy}
+                  className={`rounded px-3 py-1 capitalize disabled:opacity-50 ${
+                    inputMethod === m ? 'bg-terracotta-600 text-white' : 'text-stone-600 hover:text-stone-900'
+                  }`}
+                >
+                  {m === 'record' ? 'Record' : 'Write'}
+                </button>
+              ))}
+            </div>
+            {inputMethod === 'record' ? (
+              <Recorder mode={recordMode} onModeChange={setRecordMode} onUseTake={handleUseTake} disabled={busy} />
+            ) : (
+              <div className="space-y-1">
+                <TextAnswerBox
+                  onSubmit={handleUseText}
+                  disabled={busy}
+                  submitLabel="Use this answer"
+                  placeholder="Type your answer the way you'd say it out loud…"
+                />
+                <p className="text-xs text-stone-400">
+                  A typed answer is graded on content and structure. Delivery (pace, filler words) is only
+                  scored for recorded takes.
+                </p>
+              </div>
+            )}
+          </div>
         )}
 
         {busy && state.phase !== 'grading' && (

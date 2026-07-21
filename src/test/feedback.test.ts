@@ -13,6 +13,7 @@ function llmResult(overrides: Partial<StarGrading> = {}): { raw: Partial<StarGra
         task: { present: true, score: 3, note: 'Goal stated.' },
         action: { present: true, score: 4, note: 'Concrete steps.' },
         result: { present: false, score: 1, note: 'No outcome stated.' },
+        reflection: { present: true, score: 3, note: 'Brief takeaway at the end.' },
       },
       coachingNotes: [
         { title: 'Add a result', detail: 'Quantify the outcome.', severity: 'high' },
@@ -35,10 +36,11 @@ describe('buildFeedback', () => {
     expect(starNotes.map((n) => n.severity)).toEqual(['high', 'medium', 'low'])
   })
 
-  it('flattens perBeat into ordered S/T/A/R beats', () => {
+  it('flattens perBeat into ordered S/T/A/R/R beats', () => {
     const fb = buildFeedback({ llm: llmResult(), filler: fillerResult() })
-    expect(fb.beats.map((b) => b.key)).toEqual(['situation', 'task', 'action', 'result'])
+    expect(fb.beats.map((b) => b.key)).toEqual(['situation', 'task', 'action', 'result', 'reflection'])
     expect(fb.beats[3]).toMatchObject({ label: 'Result', present: false, score: 1 })
+    expect(fb.beats[4]).toMatchObject({ label: 'Reflection', present: true, score: 3 })
   })
 
   it('appends a high-severity filler note when rate is high', () => {
