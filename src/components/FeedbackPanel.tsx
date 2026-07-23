@@ -6,6 +6,7 @@ import type {
   JobFit as JobFitData,
   LevelSignal as LevelSignalData,
   Severity,
+  SpokenScript as SpokenScriptData,
   StoryFidelity as StoryFidelityData,
 } from '../types'
 
@@ -232,6 +233,27 @@ function StoryFidelity({ fidelity }: { fidelity: StoryFidelityData | null }) {
   )
 }
 
+function SpokenScript({ script }: { script: SpokenScriptData | null }) {
+  if (!script?.length) return null
+  return (
+    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+      <h3 className="text-sm font-semibold text-emerald-900">Say it like this</h3>
+      <p className="mt-0.5 text-xs text-emerald-600">
+        The exact words to use — built from your real story. Say them out loud until they feel natural.
+      </p>
+      <p className="mt-4 border-l-2 border-emerald-300 pl-4 text-sm leading-relaxed text-emerald-950">
+        {script.map((line, i) => (
+          <span key={i} className="block">
+            {i === 0 && '“'}
+            {line}
+            {i === script.length - 1 && '”'}
+          </span>
+        ))}
+      </p>
+    </div>
+  )
+}
+
 function JobFit({ fit }: { fit: JobFitData | null }) {
   if (!fit) return null
   const groups: Array<{ label: string; items: string[] }> = [
@@ -265,11 +287,13 @@ function JobFit({ fit }: { fit: JobFitData | null }) {
 
 export default function FeedbackPanel({ feedback }: { feedback: Feedback | null }) {
   if (!feedback) return null
-  const { conforms, summary, scores, level, habits, beats, filler, notes, storyFidelity, jobFit } = feedback
+  const { conforms, summary, scores, level, habits, beats, filler, notes, spokenScript, storyFidelity, jobFit } =
+    feedback
 
   return (
     <div className="space-y-5">
       <LevelSignal level={level} />
+      <SpokenScript script={spokenScript} />
       <JobFit fit={jobFit} />
       <StoryFidelity fidelity={storyFidelity} />
       <DeliveryHabits habits={habits} />

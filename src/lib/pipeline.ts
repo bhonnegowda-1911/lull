@@ -1,5 +1,7 @@
 import { fillerAnalyzer } from './analyzers/fillerAnalyzer'
 import { makeLlmAnalyzer } from './analyzers/llmAnalyzer'
+import { generateCoachingExtras } from './analyzers/extrasAnalyzer'
+import { generateSpokenScript } from './analyzers/scriptAnalyzer'
 import { DEFAULT_CRITERIA, type Criteria } from '../data/criteria'
 import type { Story } from '../data/stories'
 import type { Project } from '../data/projects'
@@ -26,6 +28,9 @@ export interface PipelineInput {
   projects?: Project[]
   /** When set: grade the answer's fit to this company/JD bar, on top of the STAR grade. */
   job?: ParsedJob | null
+  /** Coaching mode: produce the verbatim "say it like this" script (built from the answer itself,
+   *  enriched by any stories/projects). Independent of whether the story bank has a match. */
+  coaching?: boolean
   signal?: AbortSignal
   onProgress?: (stage: PipelineStage) => void
   /**
@@ -47,6 +52,7 @@ export async function runPipeline({
   stories,
   projects,
   job,
+  coaching = false,
   signal,
   onProgress = () => {},
   onGrade,
@@ -70,7 +76,21 @@ export async function runPipeline({
 
   onProgress('analyzing')
   const llmAnalyzer = makeLlmAnalyzer(criteria)
-  const llmResult = await llmAnalyzer.run({ ...baseCtx, filler: fillerResult.raw })
+  // The STAR grade and the coaching side-outputs are separate LLM calls: folded into one schema, the
+  // constrained-decoding grammar exceeds the gateway's size limit. They're independent, so run in
+  // parallel — the side calls add no wall-clock time. The grade itself no longer needs the ground
+  // truth (it grades delivery + level), so it's given none.
+  //  - spokenScript: the verbatim "say it like this" script — on EVERY coaching grade, built from the
+  //    answer itself so it doesn't depend on the story bank having a match.
+  //  - extras (storyFidelity/jobFit): only when real ground truth / a target job exists.
+  // All side calls are best-effort and never fail the grade.
+  const [llmResult, script, extras] = await Promise.all([
+    llmAnalyzer.run({ ...baseCtx, stories: undefined, projects: undefined, job: null, filler: fillerResult.raw }),
+    coaching ? generateSpokenScript({ question, transcript, stories, projects, signal }) : Promise.resolve(null),
+    generateCoachingExtras({ question, transcript, stories, projects, job, signal }),
+  ])
+  if (script?.length) llmResult.raw = { ...llmResult.raw, spokenScript: script }
+  if (extras) llmResult.raw = { ...llmResult.raw, ...extras }
 
   return { filler: fillerResult, llm: llmResult }
 }

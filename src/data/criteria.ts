@@ -37,8 +37,10 @@ export const STAR_CRITERIA: Criteria = {
   id: 'star',
   label: 'STAR method',
   model: DEFAULT_MODEL,
-  // Full STAR grade + level signal + coaching notes, plus optional storyFidelity/jobFit sub-objects.
-  // 1500 (the default) truncates this and breaks JSON parsing; give it generous headroom.
+  // STAR grade + level signal + coaching notes. The coaching-mode/job-mode extras (storyFidelity,
+  // jobFit, spokenScript) are a SEPARATE call — see COACHING_EXTRAS_SCHEMA — because folding them in
+  // pushed the compiled grammar past the gateway's size limit. 1500 (the default) truncates this and
+  // breaks JSON parsing; give it generous headroom.
   maxTokens: 3500,
   systemPrompt: `You are an expert interview-delivery coach. You grade how well a spoken
 answer follows the STAR(R) method — Situation, Task, Action, Result, and Reflection — and
@@ -91,29 +93,7 @@ Pay special attention to two delivery habits and grade them explicitly and hones
    on background, setup, and technical minutiae? Classify the tendency as too_much (rambling
    / too in-the-weeds), balanced, or too_little (too vague, no substance). Most candidates
    err toward too_much.
-Be specific and direct about these two — they are common, fixable habits.
-
-CONTENT COACHING (only when "CANDIDATE'S TRUE STORIES" or "CANDIDATE'S TRUE PROJECTS" are
-provided): you also have the candidate's own ground truth — their stories and the richer projects
-behind them (captured across facets like ownership, influence, ambiguity, prioritization). Compare
-how they TOLD the answer against what actually happened, and fill "storyFidelity": name the matched
-story or project; list where the telling UNDERSOLD the real scope/impact (use the project facets —
-e.g. they owned it org-wide but said "we"); list concrete impact present in the ground truth but
-OMITTED from the telling; flag solo work framed as "we"/team (misattributedToTeam); and if a
-DIFFERENT provided story/project is a stronger fit for this question, name it in betterExampleTitle.
-Use ONLY the provided ground truth — do not invent facts. If none is provided, OMIT storyFidelity
-entirely.
-
-JD / COMPANY FIT (only when a "TARGET JOB" is provided): a behavioral answer is also judged against
-the specific company and role. Fill "jobFit": echo the company; score 1-5 how well THIS answer lands
-for THIS role's bar; list the JD must-haves/keywords the answer genuinely EVIDENCED (mustHavesHit)
-and the relevant ones it could have surfaced for this role but DIDN'T (mustHavesMissed); and list the
-company's values / behavioral signals the answer demonstrated (valuesSignaled) — apply what you know
-about how this named company evaluates behavioral answers (e.g. its leadership principles or stated
-values), but never fabricate a value the answer doesn't actually support. Keep "note" to one or two
-sentences on the fit and the single highest-leverage thing to add to land better for this company.
-This AUGMENTS the STAR grade — it never replaces it. If no TARGET JOB is provided, OMIT jobFit
-entirely.`,
+Be specific and direct about these two — they are common, fixable habits.`,
   schema: {
     type: 'object',
     properties: {
@@ -237,66 +217,6 @@ entirely.`,
           additionalProperties: false,
         },
       },
-      storyFidelity: {
-        type: 'object',
-        description:
-          "Content critique vs. the candidate's true stories. INCLUDE ONLY when true stories were provided; otherwise omit this field.",
-        properties: {
-          matchedStoryTitle: {
-            type: 'string',
-            description: 'Title of the provided story the answer was telling; empty string if none matched.',
-          },
-          underSold: {
-            type: 'array',
-            description: 'Where the telling sold the work short of its real scope/impact.',
-            items: { type: 'string' },
-          },
-          omittedImpact: {
-            type: 'array',
-            description: 'Concrete impact in the true story left out of the telling.',
-            items: { type: 'string' },
-          },
-          misattributedToTeam: {
-            type: 'array',
-            description: 'Spots where solo work was framed as "we"/team.',
-            items: { type: 'string' },
-          },
-          betterExampleTitle: {
-            type: 'string',
-            description: 'Title of a stronger provided story for this question; empty string if none.',
-          },
-          note: { type: 'string', description: 'One or two sentence overall content note.' },
-        },
-        required: ['matchedStoryTitle', 'underSold', 'omittedImpact', 'misattributedToTeam', 'betterExampleTitle', 'note'],
-        additionalProperties: false,
-      },
-      jobFit: {
-        type: 'object',
-        description:
-          'Fit of this answer to the target company/JD bar. INCLUDE ONLY when a TARGET JOB was provided; otherwise omit this field.',
-        properties: {
-          company: { type: 'string', description: 'The target company this answer was graded against.' },
-          score: { type: 'integer', enum: SCORE_ENUM, description: '1 (off-target for this role) to 5 (strong fit).' },
-          mustHavesHit: {
-            type: 'array',
-            description: "JD must-haves / keywords the answer genuinely evidenced.",
-            items: { type: 'string' },
-          },
-          mustHavesMissed: {
-            type: 'array',
-            description: "Relevant JD must-haves the answer could have surfaced for this role but didn't.",
-            items: { type: 'string' },
-          },
-          valuesSignaled: {
-            type: 'array',
-            description: "Company values / behavioral signals the answer demonstrated (only those genuinely supported).",
-            items: { type: 'string' },
-          },
-          note: { type: 'string', description: 'One or two sentences: the fit, and the highest-leverage thing to add for this company.' },
-        },
-        required: ['company', 'score', 'mustHavesHit', 'mustHavesMissed', 'valuesSignaled', 'note'],
-        additionalProperties: false,
-      },
     },
     required: ['conforms', 'perBeat', 'scores', 'summary', 'deliveryHabits', 'levelSignal', 'coachingNotes'],
     additionalProperties: false,
@@ -304,3 +224,104 @@ entirely.`,
 }
 
 export const DEFAULT_CRITERIA = STAR_CRITERIA
+
+// ---- Coaching-mode side calls (separate from the grade) ------------------
+// The spoken script, storyFidelity, and jobFit were originally sub-objects on the STAR grade schema,
+// but that schema's compiled constrained-decoding grammar grew past the gateway's size limit
+// ("compiled grammar is too large"). They live in their own smaller calls so every grammar stays
+// under the limit. Both run in parallel with the grade — see scriptAnalyzer / extrasAnalyzer +
+// pipeline — and their results are merged back onto the StarGrading the UI consumes.
+
+// SPOKEN SCRIPT — runs on EVERY coaching-mode grade. It is built from the candidate's OWN answer
+// (tighten and reorder what they actually said into a strong verbatim version), so it never depends
+// on the story bank; true stories/projects, when present, only enrich and correct it. `spokenScript`
+// is required, so the model always returns it.
+export const SPOKEN_SCRIPT_PROMPT = `You are an expert interview-delivery coach. You are given a
+behavioral interview question and a transcript of the candidate's spoken answer. When available, you
+are also given the candidate's TRUE stories/projects (ground truth).
+
+Don't just tell them HOW to deliver — hand them the WORDS. Write "spokenScript": 4-7 verbatim,
+first-person lines ("I ...") the candidate could say out loud, in order, to deliver a strong version
+of THIS answer: lead with the outcome/result, claim their ownership, name the key decision, quantify
+the impact, and close with a genuine one-line reflection. Each entry is the polished spoken words
+themselves — natural, tight, roughly one breath each — NOT a paraphrase, a label, or "you should…"
+advice.
+
+Build the script primarily from what the candidate ACTUALLY SAID — reorder it to lead with impact,
+sharpen vague phrasing, turn "we" into "I" where they owned the work, and cut filler. If TRUE
+stories/projects are provided, use their real numbers, scope, and decisions to strengthen and correct
+the lines. Never invent facts that aren't supported by the answer or the ground truth; if a number is
+genuinely unknown, phrase the line so the candidate can drop theirs in (e.g. "I cut that by roughly
+X%"). Always return a usable script.`
+
+export const SPOKEN_SCRIPT_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    spokenScript: {
+      type: 'array',
+      description: 'Verbatim, first-person lines the candidate should say, in order.',
+      items: { type: 'string' },
+    },
+  },
+  required: ['spokenScript'],
+  additionalProperties: false,
+}
+
+// CONTENT + JD FIT — runs only when true stories/projects and/or a target job are present.
+export const COACHING_EXTRAS_PROMPT = `You are an expert interview-delivery coach. You are given a
+behavioral interview question, a transcript of the candidate's spoken answer, and — depending on the
+session — the candidate's TRUE stories/projects (ground truth) and/or a TARGET JOB. Produce up to two
+things. Omit either whose inputs are absent.
+
+CONTENT COACHING — "storyFidelity" (only when "CANDIDATE'S TRUE STORIES" or "CANDIDATE'S TRUE
+PROJECTS" are provided): compare how they TOLD the answer against what actually happened. Name the
+matched story/project (matchedStoryTitle); list where the telling UNDERSOLD the real scope/impact
+(underSold — use the project facets, e.g. they owned it org-wide but said "we"); list concrete impact
+in the ground truth OMITTED from the telling (omittedImpact); flag solo work framed as "we"/team
+(misattributedToTeam); and if a DIFFERENT provided story/project fits this question better, name it
+(betterExampleTitle). Use ONLY the provided ground truth — never invent facts. If none is provided,
+OMIT storyFidelity entirely.
+
+JD / COMPANY FIT — "jobFit" (only when a "TARGET JOB" is provided): echo the company; score 1-5 how
+well THIS answer lands for THIS role's bar; list the JD must-haves/keywords the answer genuinely
+EVIDENCED (mustHavesHit) and the relevant ones it could have surfaced but DIDN'T (mustHavesMissed);
+list the company values / behavioral signals the answer demonstrated (valuesSignaled) — apply what
+you know about how this named company evaluates behavioral answers (its leadership principles / stated
+values), but never fabricate a value the answer doesn't support. Keep "note" to one or two sentences
+on the fit and the single highest-leverage thing to add. If no TARGET JOB is provided, OMIT jobFit.`
+
+export const COACHING_EXTRAS_SCHEMA: JsonSchema = {
+  type: 'object',
+  properties: {
+    storyFidelity: {
+      type: 'object',
+      description: "Content critique vs. the candidate's true stories. Omit entirely if no true stories provided.",
+      properties: {
+        matchedStoryTitle: { type: 'string', description: 'Title of the provided story the answer was telling; empty string if none.' },
+        underSold: { type: 'array', description: 'Where the telling sold the work short.', items: { type: 'string' } },
+        omittedImpact: { type: 'array', description: 'Concrete impact left out of the telling.', items: { type: 'string' } },
+        misattributedToTeam: { type: 'array', description: 'Spots where solo work was framed as "we"/team.', items: { type: 'string' } },
+        betterExampleTitle: { type: 'string', description: 'A stronger provided story for this question; empty string if none.' },
+        note: { type: 'string', description: 'One or two sentence overall content note.' },
+      },
+      required: ['matchedStoryTitle', 'underSold', 'omittedImpact', 'misattributedToTeam', 'betterExampleTitle', 'note'],
+      additionalProperties: false,
+    },
+    jobFit: {
+      type: 'object',
+      description: 'Fit of this answer to the target company/JD bar. Omit entirely if no TARGET JOB provided.',
+      properties: {
+        company: { type: 'string', description: 'The target company this answer was graded against.' },
+        score: { type: 'integer', description: '1 (off-target for this role) to 5 (strong fit).' },
+        mustHavesHit: { type: 'array', description: 'JD must-haves the answer evidenced.', items: { type: 'string' } },
+        mustHavesMissed: { type: 'array', description: "Relevant JD must-haves it could have surfaced but didn't.", items: { type: 'string' } },
+        valuesSignaled: { type: 'array', description: 'Company values the answer demonstrated.', items: { type: 'string' } },
+        note: { type: 'string', description: 'One or two sentences: the fit and the highest-leverage add.' },
+      },
+      required: ['company', 'score', 'mustHavesHit', 'mustHavesMissed', 'valuesSignaled', 'note'],
+      additionalProperties: false,
+    },
+  },
+  required: [],
+  additionalProperties: false,
+}

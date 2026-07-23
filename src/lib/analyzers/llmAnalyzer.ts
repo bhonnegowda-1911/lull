@@ -9,7 +9,7 @@ import type { AnalyzerContext, FillerResult, LlmAnalyzerResult, ParsedJob, StarG
 // injected filler summary +, in coaching mode, the candidate's true stories) and calls the
 // provider-agnostic client. One LLM call total.
 
-function storiesBlock(stories: Story[]): string {
+export function storiesBlock(stories: Story[]): string {
   const lines = [
     `CANDIDATE'S TRUE STORIES (ground truth — coach the telling against these; do not invent facts):`,
   ]
@@ -28,7 +28,7 @@ function storiesBlock(stories: Story[]): string {
   return lines.join('\n')
 }
 
-function projectsBlock(projects: Project[]): string {
+export function projectsBlock(projects: Project[]): string {
   const lines = [
     `CANDIDATE'S TRUE PROJECTS (deeper ground truth — the work behind the stories; do not invent facts):`,
   ]
@@ -44,7 +44,7 @@ function projectsBlock(projects: Project[]): string {
   return lines.join('\n')
 }
 
-function jobBlock(job: ParsedJob): string {
+export function jobBlock(job: ParsedJob): string {
   const lines = [
     `TARGET JOB (grade fit against this company/role — apply what you know about how ${job.company || 'this company'} evaluates behavioral answers; never fabricate fit):`,
     `- Role: ${job.title}${job.company ? ` @ ${job.company}` : ''} (${job.seniority})`,

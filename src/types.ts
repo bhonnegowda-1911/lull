@@ -88,6 +88,12 @@ export interface CoachingNote {
   severity: Severity
 }
 
+// The verbatim lines the candidate can deliver — coaching mode only. Instead of advice on HOW to
+// deliver, this hands them the exact WORDS to say, in order, grounded in their true story. Each
+// entry is one ready-to-speak sentence (first person). Kept as plain strings to keep the grader's
+// output grammar small — the STAR schema is near the constrained-decoding size limit.
+export type SpokenScript = string[]
+
 export interface StarGrading {
   conforms: boolean
   perBeat: { situation: StarBeat; task: StarBeat; action: StarBeat; result: StarBeat; reflection: StarBeat }
@@ -96,6 +102,8 @@ export interface StarGrading {
   deliveryHabits: DeliveryHabits
   levelSignal: LevelSignal
   coachingNotes: CoachingNote[]
+  /** Present only in coaching mode: verbatim lines the candidate can say, built from their story. */
+  spokenScript?: SpokenScript
   /** Present only when the grader was given the candidate's true stories (coaching mode). */
   storyFidelity?: StoryFidelity
   /** Present only when the grader was given a target job — fit to that company/JD bar. */
@@ -177,6 +185,8 @@ export interface Feedback {
   beats: FeedbackBeat[]
   filler: { total: number; perMinute: number | null; byWord: Record<string, number> }
   notes: FeedbackNote[]
+  /** Coaching-mode only: verbatim lines to say, built from the candidate's true story. */
+  spokenScript: SpokenScript | null
   /** Coaching-mode only: content critique against the candidate's true stories. */
   storyFidelity: StoryFidelity | null
   /** Set only when a target job was attached: how this answer fits that company/JD bar. */

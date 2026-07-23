@@ -43,6 +43,7 @@ export function buildFeedback({ llm, filler }: BuildFeedbackInput = {}): Feedbac
       byWord: fillerRaw.byWord || {},
     },
     notes,
+    spokenScript: star.spokenScript?.length ? star.spokenScript : null,
     storyFidelity: star.storyFidelity || null,
     jobFit: star.jobFit || null,
   }

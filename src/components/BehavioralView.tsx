@@ -429,6 +429,8 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
         projects,
         // When launched from a round's plan, grade fit to that company/JD bar too (either mode).
         job: targetJob,
+        // Coaching mode gets the verbatim "say it like this" script, built from the answer itself.
+        coaching: mode === 'coaching',
         signal: controller.signal,
         // Stream the grade so the UI fills in progressively (see GradingProgress).
         onFiller: (filler) => setGradeProgress((g) => ({ ...g, filler })),
