@@ -51,7 +51,7 @@ export type DetailTendency = 'too_much' | 'balanced' | 'too_little'
 /** Who is running the round — shapes how the practice interviewer probes. A recruiter screens for
  *  motivation/fit/logistics and never asks technical deep-dives; a hiring manager pushes on
  *  ownership, scope, and tradeoffs at the level bar; a peer can go into technical decisions. */
-export type InterviewerPersona = 'recruiter' | 'hiring_manager' | 'peer'
+export type InterviewerPersona = 'recruiter' | 'hiring_manager' | 'peer' | 'leader'
 
 export interface StarBeat {
   present: boolean
@@ -297,6 +297,11 @@ export type RoundType =
   | 'project_deep_dive'
   | 'system_design'
   | 'behavioral'
+  | 'leadership'
+  | 'refactoring'
+  | 'ai_building'
+  | 'architecture_design'
+  | 'working_with_product'
   | 'onsite_loop'
   | 'custom'
 export type StageOutcome = 'pending' | 'scheduled' | 'passed' | 'failed'
@@ -416,7 +421,7 @@ export interface PrepTaskLink {
     startProblemId?: string
     startPromptId?: string
     jobId?: string
-    persona?: 'recruiter' | 'hiring_manager'
+    persona?: InterviewerPersona
     /** Free-text interviewer/round context to ground a conversational mock (custom/no-bank rounds). */
     interviewerContext?: string
     /** An ad-hoc question to practice — used when the round has no bank prompt (custom rounds practice

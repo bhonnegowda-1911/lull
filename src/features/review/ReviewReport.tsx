@@ -14,6 +14,11 @@ const ROUND_LABEL: Record<RoundType, string> = {
   project_deep_dive: 'Project deep dive',
   system_design: 'System design',
   behavioral: 'Behavioral',
+  leadership: 'Leadership round',
+  refactoring: 'Refactoring exercise',
+  ai_building: 'AI building exercise',
+  architecture_design: 'High-level architecture design',
+  working_with_product: 'Working with product',
   onsite_loop: 'Onsite loop',
   custom: 'Interview',
 }

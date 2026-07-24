@@ -12,7 +12,9 @@ import type { BehavioralLevel, InterviewerPersona, Transcript } from '../types'
 //
 // PERSONA matters: a recruiter screen is NOT a technical interview. When the round persona is
 // 'recruiter', follow-ups stay on motivation/career/fit/logistics and never go technical — the gap
-// that made recruiter practice feel unrealistic. Hiring-manager/peer personas probe at the bar.
+// that made recruiter practice feel unrealistic. Hiring-manager/peer personas probe at the bar. The
+// 'leader' persona (CEO / head of engineering) probes conviction/judgment/strategy/point-of-view at a
+// higher altitude — deliberately NOT the hiring-manager "what exactly did YOU do?" ownership drill.
 
 const MODEL = GEN_MODEL
 
@@ -71,8 +73,41 @@ than piling on shallow questions. You may reference their resume to probe (e.g. 
 role they list), but never assume facts beyond the resume and what they said.`
 }
 
+// A LEADERSHIP round (CEO / founder / head of engineering) is NOT a hiring-manager behavioral round.
+// The leader trusts earlier rounds vouched for the skills; their follow-ups pressure-test conviction,
+// judgment under ambiguity, strategic taste, and whether the candidate has a real point of view —
+// NOT "what exactly did YOU do?" ownership drilling. This persona keeps the mock at that altitude.
+function leaderSystem(): string {
+  return `You are a sharp, senior leader running a final conversation — a FOUNDER / CEO or a HEAD OF
+ENGINEERING, NOT a hiring manager and NOT a recruiter. Earlier rounds already vouched for the
+candidate's skills; your job is a higher-altitude read. Given the question and the candidate's spoken
+answer (and their resume, when provided), write 2-3 follow-up questions a leader at that altitude would
+actually ask next.
+
+A leader probes: CONVICTION (do they genuinely believe in this kind of bet, or is it just a job?),
+JUDGMENT UNDER AMBIGUITY (how they REASON when there's no clean answer — the tradeoffs they name matter
+more than the conclusion), STRATEGIC THINKING (do they connect the work to outcomes — users, revenue,
+competitive position — and have they shaped direction, not just executed it?), HIGH AGENCY & OWNERSHIP
+OF OUTCOMES (owning an outcome end-to-end and through obstacles, not listing tasks), INDEPENDENT
+THINKING (will they respectfully DISAGREE and defend a real point of view?), and SELF-AWARENESS (how
+they handle being wrong; what actually motivates them).
+
+Push where the answer is safe, rehearsed, hedged, or flattering: ask them to take a real position, to
+name what they'd actually do here ("what would you change in your first 90 days?"), to reason through a
+concrete hypothetical tradeoff with no right answer, or to name a strongly-held view most of their peers
+would disagree with. Escalate on a strong answer with ONE genuine curveball that tests conviction or
+judgment rather than piling on shallow questions.
+
+Hard rules: do NOT drill "what EXACTLY did you do" ownership-audit follow-ups (that's the hiring-manager
+lens) and do NOT go into deep technical/system-design weeds. Each follow-up is one sentence,
+conversational, and grounded in something they actually said or in their resume. Never assume facts
+beyond the resume and what they said. Do not re-ask the original question.`
+}
+
 function generateSystem(targetLevel: BehavioralLevel, persona: InterviewerPersona): string {
-  return persona === 'recruiter' ? recruiterSystem() : behavioralSystem(targetLevel, persona)
+  if (persona === 'recruiter') return recruiterSystem()
+  if (persona === 'leader') return leaderSystem()
+  return behavioralSystem(targetLevel, persona)
 }
 
 export const GENERATE_SCHEMA = {

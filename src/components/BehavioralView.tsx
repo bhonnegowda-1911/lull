@@ -529,6 +529,8 @@ export default function BehavioralView({ onNeedKeys }: { onNeedKeys?: () => void
               {mode === 'interview'
                 ? persona === 'recruiter'
                   ? 'A recruiter screen: follow-ups stay on motivation, fit, and logistics — no technical questions.'
+                  : persona === 'leader'
+                  ? 'A leadership round (CEO / head of engineering): follow-ups pressure-test conviction, judgment, and your point of view — not ownership drilling.'
                   : `The interviewer knows only your resume and holds you to a ${profile.targetLevel} bar — no story-bank feedback.`
                 : 'Feedback critiques your telling against your confirmed stories (undersold impact, “we” vs “I”, a stronger example).'}
             </p>

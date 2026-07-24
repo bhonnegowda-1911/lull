@@ -18,6 +18,11 @@ const ROUND_TYPES = [
   'project_deep_dive',
   'system_design',
   'behavioral',
+  'leadership',
+  'refactoring',
+  'ai_building',
+  'architecture_design',
+  'working_with_product',
   'onsite_loop',
   'custom',
 ]
@@ -47,6 +52,16 @@ Do two things, in order:
    - project_deep_dive: a deep dive into one of the candidate's past projects.
    - system_design: designing a system — requirements, components, scaling, tradeoffs.
    - behavioral: STAR-style stories about past experiences (conflict, failure, leadership).
+   - leadership: a conversation with a CEO / founder / head of engineering — conviction, judgment
+     under ambiguity, strategic thinking, and point of view, rather than surface-level behavioral.
+   - refactoring: improving an existing/messy codebase — code smells, safe incremental change, tests,
+     behavior preservation.
+   - ai_building: building a working feature live while driving AI coding tools — velocity plus judgment
+     on architecture, verification, and shipping.
+   - architecture_design: a high-level architecture sketch — components, data flow, boundaries, and key
+     tradeoffs (broader than a staged system-design round).
+   - working_with_product: cross-functional collaboration with product — product sense, ambiguity,
+     scope pushback, and PM partnership.
    - onsite_loop: clearly spans multiple of the above in one long session.
    - custom: a real interview that fits none of the above cleanly.
    Give your confidence (high/medium/low) and a one- or two-sentence rationale. If the audio is

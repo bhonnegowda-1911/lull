@@ -78,6 +78,48 @@ export const ROUND_CATALOG: RoundCatalogEntry[] = [
     picks: 'behavioral',
   },
   {
+    type: 'leadership',
+    label: 'Leadership round',
+    blurb: 'A conversation with the CEO or head of engineering — conviction, judgment, and whether you raise the bar.',
+    defaultDurationMin: 45,
+    practiceMode: 'behavioral',
+    // No canonical bank: a leader's questions are bespoke and non-obvious, so prep is LLM-authored
+    // (routes to CustomRoundPlan → the leadership-specific criteria) rather than ranked from a bank.
+    picks: null,
+  },
+  {
+    type: 'refactoring',
+    label: 'Refactoring exercise',
+    blurb: 'Improve a messy/legacy codebase under time pressure — smells, structure, tests, no behavior change.',
+    defaultDurationMin: 60,
+    practiceMode: 'coding',
+    picks: null,
+  },
+  {
+    type: 'ai_building',
+    label: 'AI building exercise',
+    blurb: 'Build a working feature in a real editor while driving AI coding tools — velocity plus judgment.',
+    defaultDurationMin: 60,
+    practiceMode: 'build',
+    picks: null,
+  },
+  {
+    type: 'architecture_design',
+    label: 'High-level architecture design',
+    blurb: 'Sketch a system’s components, data flow, and key tradeoffs — broader than a staged design interview.',
+    defaultDurationMin: 60,
+    practiceMode: 'sysdesign',
+    picks: null,
+  },
+  {
+    type: 'working_with_product',
+    label: 'Working with product',
+    blurb: 'Cross-functional collaboration — product sense, ambiguity, scope pushback, and PM partnership.',
+    defaultDurationMin: 45,
+    practiceMode: 'behavioral',
+    picks: null,
+  },
+  {
     type: 'onsite_loop',
     label: 'Onsite loop',
     blurb: 'The final loop — a mix of system design, behavioral, and project deep-dives.',

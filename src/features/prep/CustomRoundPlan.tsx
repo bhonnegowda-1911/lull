@@ -1,7 +1,19 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { generateCustomRoundPrep, hasCustomPrepContext } from '../../lib/customRound/generate'
+import { roundInterviewerContext } from '../../lib/application/globalPrepPlan'
+import { roundCatalog } from '../../data/rounds'
 import Pending from '../../components/Pending'
-import type { CustomRoundPrep, InterviewRoundInstance, JobDescription } from '../../types'
+import type { CustomRoundPrep, InterviewerPersona, InterviewRoundInstance, JobDescription } from '../../types'
+
+// Where a specialized round's practice happens when it's NOT a conversational (behavioral) mock — a
+// refactoring round wants the coding editor, an architecture round the system-design canvas, an
+// AI-building round the build sandbox. These pages carry their own problems, so they open unseeded.
+const PRACTICE_ENV: Record<'coding' | 'sysdesign' | 'build', { route: string; label: string }> = {
+  coding: { route: '/practice/coding', label: 'coding editor' },
+  sysdesign: { route: '/practice/sysdesign', label: 'system-design canvas' },
+  build: { route: '/practice/build', label: 'build sandbox' },
+}
 
 // Prep for a round with NO canonical question bank (custom / take-home). Unlike the catalog selectors,
 // there's nothing to rank — so this AUTHORS a bespoke brief from the round's own topic, focus areas,
@@ -27,6 +39,7 @@ interface Props {
 }
 
 export default function CustomRoundPlan({ job, round, onSave }: Props) {
+  const navigate = useNavigate()
   const [generating, setGenerating] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -38,6 +51,34 @@ export default function CustomRoundPlan({ job, round, onSave }: Props) {
   const prep = draft ?? round.customPrep ?? null
   const isDraft = draft !== null
   const hasContext = hasCustomPrepContext(round)
+  // A leadership round is interviewed by a CEO / head of engineering — practice it against that
+  // persona; any other conversational no-bank round falls back to the hiring-manager lens.
+  const persona: InterviewerPersona = round.type === 'leadership' ? 'leader' : 'hiring_manager'
+  // Conversational rounds (product/leadership/generic custom) practice each question as a seeded,
+  // timed behavioral mock. Technical-exercise rounds (refactoring/AI-build/architecture) instead open
+  // their real practice environment, which can't be seeded per-question.
+  const mode = roundCatalog(round.type).practiceMode
+  const env = mode && mode !== 'behavioral' ? PRACTICE_ENV[mode] : null
+
+  /** Launch a timed behavioral mock seeded on this exact brief question (same page/timer as the
+   *  behavioral rounds), grounded in the round's context and the right interviewer persona. */
+  function practice(item: CustomRoundPrep['items'][number]) {
+    const interviewerContext = roundInterviewerContext(round)
+    navigate('/practice/behavioral', {
+      state: {
+        jobId: job.id,
+        persona,
+        ...(interviewerContext ? { interviewerContext } : {}),
+        startPrompt: {
+          text: item.prompt,
+          label: `${round.label} question`,
+          assesses: item.assesses,
+          tip: item.approach,
+          trap: item.trap,
+        },
+      },
+    })
+  }
 
   function toggle(i: number) {
     setExpanded((prev) => {
@@ -129,6 +170,19 @@ export default function CustomRoundPlan({ job, round, onSave }: Props) {
             <span className="font-semibold text-stone-700">What this tests:</span> {prep.summary}
           </p>
 
+          {env && (
+            <div className="flex flex-wrap items-center gap-2 rounded-md border border-terracotta-100 bg-terracotta-50/50 px-3 py-2 text-xs text-stone-600">
+              <span>Practice this as a timed exercise in the {env.label} — the questions below are what to expect.</span>
+              <button
+                type="button"
+                onClick={() => navigate(env.route, { state: { jobId: job.id } })}
+                className="rounded-md bg-terracotta-600 px-3 py-1 text-xs font-medium text-white hover:bg-terracotta-500"
+              >
+                Open the {env.label} →
+              </button>
+            </div>
+          )}
+
           <ol className="space-y-2">
             {prep.items.map((item, i) => (
               <li key={i} className="rounded-lg border border-stone-200 bg-white p-3">
@@ -136,13 +190,24 @@ export default function CustomRoundPlan({ job, round, onSave }: Props) {
                   <span className="text-xs font-semibold text-stone-400">#{i + 1}</span>
                   <p className="text-sm font-semibold text-stone-800">{item.prompt}</p>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => toggle(i)}
-                  className="mt-2 text-xs font-medium text-terracotta-600 hover:text-terracotta-500"
-                >
-                  {expanded.has(i) ? 'Hide how to prep' : 'Show how to prep'}
-                </button>
+                <div className="mt-2 flex items-center gap-3">
+                  {!env && (
+                    <button
+                      type="button"
+                      onClick={() => practice(item)}
+                      className="rounded-md bg-terracotta-600 px-3 py-1 text-xs font-medium text-white hover:bg-terracotta-500"
+                    >
+                      Practice →
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => toggle(i)}
+                    className="text-xs font-medium text-terracotta-600 hover:text-terracotta-500"
+                  >
+                    {expanded.has(i) ? 'Hide how to prep' : 'Show how to prep'}
+                  </button>
+                </div>
                 {expanded.has(i) && (
                   <div className="mt-2 space-y-1 border-t border-stone-100 pt-2 text-xs text-stone-600">
                     <p><span className="font-semibold text-stone-700">Assesses:</span> {item.assesses}</p>

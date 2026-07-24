@@ -10,6 +10,7 @@ import type {
   GlobalPrepDay,
   GlobalPrepPlan,
   GlobalPrepTask,
+  InterviewerPersona,
   InterviewRoundInstance,
   JobDescription,
   PrepTaskLink,
@@ -58,6 +59,11 @@ const MOCK_MIN: Partial<Record<RoundType, number>> = {
   hiring_manager: 30,
   system_design: 60,
   behavioral: 30,
+  leadership: 30,
+  refactoring: 60,
+  ai_building: 60,
+  architecture_design: 45,
+  working_with_product: 30,
   onsite_loop: 90,
 }
 
@@ -74,11 +80,12 @@ const PRACTICE_ROUTE: Record<NonNullable<PracticeMode>, string> = {
 function practiceModeLink(jobId: string, type: RoundType): PrepTaskLink | undefined {
   const mode = roundCatalog(type).practiceMode
   if (!mode) return undefined
-  return { to: PRACTICE_ROUTE[mode], state: mode === 'behavioral' ? { jobId, persona: type === 'recruiter' ? 'recruiter' : 'hiring_manager' } : undefined }
+  const persona: InterviewerPersona = type === 'recruiter' ? 'recruiter' : type === 'leadership' ? 'leader' : 'hiring_manager'
+  return { to: PRACTICE_ROUTE[mode], state: mode === 'behavioral' ? { jobId, persona } : undefined }
 }
 
 /** The round's context as a single free-text string, to ground a conversational mock. */
-function roundInterviewerContext(round: InterviewRoundInstance): string {
+export function roundInterviewerContext(round: InterviewRoundInstance): string {
   const focus = (round.focusAreas ?? []).filter((a) => a.trim())
   return [round.topic?.trim(), round.notes?.trim(), focus.length ? `Focus: ${focus.join(', ')}` : '']
     .filter(Boolean)
@@ -103,7 +110,8 @@ export function taskInterviewerContext(
  *  STAR question. */
 function behavioralMockLink(jobId: string, round: InterviewRoundInstance, startPrompt: NonNullable<PrepTaskLink['state']>['startPrompt']): PrepTaskLink {
   const interviewerContext = roundInterviewerContext(round)
-  const persona = round.type === 'recruiter' ? 'recruiter' : 'hiring_manager'
+  const persona: InterviewerPersona =
+    round.type === 'recruiter' ? 'recruiter' : round.type === 'leadership' ? 'leader' : 'hiring_manager'
   return {
     to: '/practice/behavioral',
     state: { jobId, persona, ...(interviewerContext ? { interviewerContext } : {}), ...(startPrompt ? { startPrompt } : {}) },
